@@ -911,6 +911,14 @@
                 <div class="stat-value" id="statCredits">0</div>
                 <div class="stat-label">Credits</div>
             </div>
+            <div class="stat-card">
+                <div class="stat-value" id="statBanned">0</div>
+                <div class="stat-label" data-i18n="stats.banned"></div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="statTodayBanned">0</div>
+                <div class="stat-label" data-i18n="stats.todayBanned"></div>
+            </div>
         </div>
         <div class="tabs">
             <div class="tab active" data-tab="accounts" data-i18n="tabs.accounts"></div>
@@ -945,6 +953,8 @@
                         <button class="btn btn-sm btn-secondary" onclick="batchRefreshModels()" style="padding:3px 10px;font-size:12px" data-i18n="batch.refreshModels"></button>
                         <button class="btn btn-sm btn-secondary" onclick="batchSetGroup()" style="padding:3px 10px;font-size:12px;background:#0ea5e9;color:#fff" data-i18n="batch.setGroup"></button>
                         <button class="btn btn-sm btn-secondary" onclick="batchClearGroup()" style="padding:3px 10px;font-size:12px" data-i18n="batch.clearGroup"></button>
+                        <button class="btn btn-sm btn-secondary" onclick="batchSilent()" style="padding:3px 10px;font-size:12px;background:#64748b;color:#fff" data-i18n="batch.silent"></button>
+                        <button class="btn btn-sm btn-secondary" onclick="batchRemoveSilent()" style="padding:3px 10px;font-size:12px" data-i18n="batch.removeSilent"></button>
                         <div style="height:16px;width:1px;background:#e2e8f0;flex-shrink:0"></div>
                     </div>
                     <div style="display:flex;gap:6px;align-items:center;margin-left:auto;flex-shrink:0">
@@ -1228,6 +1238,8 @@
                 'stats.requests': '请求',
                 'stats.success': '成功',
                 'stats.failed': '失败',
+                'stats.banned': '总封禁',
+                'stats.todayBanned': '今日封禁',
                 'tabs.accounts': '账号',
                 'tabs.settings': '设置',
                 'tabs.api': 'API',
@@ -1513,6 +1525,12 @@
                 'batch.refreshResult': '刷新完成：成功 {0}，失败 {1}',
                 'batch.confirmRefreshModels': '确定为已选 {0} 个账号刷新模型缓存？',
                 'batch.refreshModelsResult': '模型缓存刷新完成：成功 {0}，失败 {1}',
+                'batch.silent': '加入静默',
+                'batch.removeSilent': '移除静默',
+                'batch.confirmSilent': '确认将 {0} 个账号加入静默（禁用但不刷新列表）？',
+                'batch.confirmRemoveSilent': '确认将 {0} 个账号移除静默（启用账号）？',
+                'batch.silentResult': '已将 {0} 个账号加入静默',
+                'batch.removeSilentResult': '已将 {0} 个账号移除静默',
                 'batch.done': '操作完成',
                 'filter.search': '搜索邮箱/昵称...',
                 'filter.all': '全部',
@@ -1584,6 +1602,8 @@
                 'stats.requests': 'Requests',
                 'stats.success': 'Success',
                 'stats.failed': 'Failed',
+                'stats.banned': 'Banned',
+                'stats.todayBanned': 'Today',
                 'tabs.accounts': 'Accounts',
                 'tabs.settings': 'Settings',
                 'tabs.api': 'API',
@@ -1859,6 +1879,12 @@
                 'batch.refreshResult': 'Refresh done: {0} success, {1} failed',
                 'batch.confirmRefreshModels': 'Refresh model cache for {0} selected accounts?',
                 'batch.refreshModelsResult': 'Model cache refresh done: {0} success, {1} failed',
+                'batch.silent': 'Add Silent',
+                'batch.removeSilent': 'Remove Silent',
+                'batch.confirmSilent': 'Add {0} accounts to silent mode (disable without refresh)?',
+                'batch.confirmRemoveSilent': 'Remove {0} accounts from silent mode (enable accounts)?',
+                'batch.silentResult': 'Added {0} accounts to silent mode',
+                'batch.removeSilentResult': 'Removed {0} accounts from silent mode',
                 'batch.done': 'Done',
                 'filter.search': 'Search email/nickname...',
                 'filter.all': 'All',
@@ -1953,6 +1979,7 @@
         let selectedAccounts = new Set();
         let filterKeyword = (function () { try { return localStorage.getItem('filterKeyword') || ''; } catch (e) { return ''; } })();
         let filterStatus = (function () { try { return localStorage.getItem('filterStatus') || 'all'; } catch (e) { return 'all'; } })();
+        let filterGroup = (function () { try { return localStorage.getItem('filterGroup') || 'all'; } catch (e) { return 'all'; } })();
         let sortField = (function () { try { return localStorage.getItem('sortField') || ''; } catch (e) { return ''; } })();
 
         // 隐私模式状态管理
@@ -2096,6 +2123,8 @@
             document.getElementById('statFailed').textContent = d.failedRequests || 0;
             document.getElementById('statTokens').textContent = formatNum(d.totalTokens || 0);
             document.getElementById('statCredits').textContent = (d.totalCredits || 0).toFixed(1);
+            document.getElementById('statBanned').textContent = d.totalBanned || 0;
+            document.getElementById('statTodayBanned').textContent = d.todayBanned || 0;
             renderGroupBoard(d.groupBreakdown || []);
         }
         function renderGroupBoard(groups) {
@@ -2138,7 +2167,7 @@
             window.allGroups = groups;
             const sel = document.getElementById('filterGroupSelect');
             if (sel) {
-                const cur = sel.value || 'all';
+                const cur = filterGroup || sel.value || 'all';
                 sel.innerHTML = '<option value="all">' + t('filter.allGroups') + '</option>' +
                     '<option value="__default__">default</option>' +
                     groups.map(g => '<option value="' + g + '"' + (cur === g ? ' selected' : '') + '>' + g + '</option>').join('');
@@ -2154,7 +2183,6 @@
             } catch (e) { /* silent */ }
         }
         function getFilteredAccounts() {
-            const filterGroup = (document.getElementById('filterGroupSelect') || {}).value || 'all';
             return accountsData.filter(a => {
                 if (filterStatus === 'enabled' && !a.enabled) return false;
                 if (filterStatus === 'disabled' && (a.enabled || (a.banStatus && a.banStatus !== 'ACTIVE'))) return false;
@@ -2176,9 +2204,11 @@
         function onFilterChange() {
             filterKeyword = document.getElementById('filterSearch').value;
             filterStatus = document.getElementById('filterStatusSelect').value;
+            filterGroup = (document.getElementById('filterGroupSelect') || {}).value || 'all';
             try {
                 localStorage.setItem('filterKeyword', filterKeyword);
                 localStorage.setItem('filterStatus', filterStatus);
+                localStorage.setItem('filterGroup', filterGroup);
             } catch (e) { }
             renderAccounts();
         }
@@ -2360,6 +2390,52 @@
             selectedAccounts.clear();
             updateBatchBar();
             loadAccounts();
+        }
+        async function batchSilent() {
+            const ids = Array.from(selectedAccounts);
+            if (ids.length === 0) return;
+            if (!confirm(t('batch.confirmSilent', ids.length))) return;
+            try {
+                const res = await fetch('/admin/api/accounts/batch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-Admin-Password': password },
+                    body: JSON.stringify({ ids, action: 'setSilent' })
+                });
+                const d = await res.json();
+                if (d.success) {
+                    alert(t('batch.silentResult', d.count || ids.length));
+                    selectedAccounts.clear();
+                    updateBatchBar();
+                    loadStats();
+                } else {
+                    alert(t('common.failed') + ': ' + (d.error || ''));
+                }
+            } catch (e) {
+                alert(t('common.failed'));
+            }
+        }
+        async function batchRemoveSilent() {
+            const ids = Array.from(selectedAccounts);
+            if (ids.length === 0) return;
+            if (!confirm(t('batch.confirmRemoveSilent', ids.length))) return;
+            try {
+                const res = await fetch('/admin/api/accounts/batch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-Admin-Password': password },
+                    body: JSON.stringify({ ids, action: 'removeSilent' })
+                });
+                const d = await res.json();
+                if (d.success) {
+                    alert(t('batch.removeSilentResult', d.count || ids.length));
+                    selectedAccounts.clear();
+                    updateBatchBar();
+                    loadStats();
+                } else {
+                    alert(t('common.failed') + ': ' + (d.error || ''));
+                }
+            } catch (e) {
+                alert(t('common.failed'));
+            }
         }
         async function refreshAllModels() {
             if (!confirm(t('models.confirmRefreshAll'))) return;

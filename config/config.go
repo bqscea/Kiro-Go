@@ -70,6 +70,7 @@ type Account struct {
 
 	// Account status
 	Enabled   bool   `json:"enabled"`             // Whether account is active in the pool
+	Silent    bool   `json:"silent,omitempty"`    // Silent mode: account is disabled but not refreshed in UI
 	BanStatus string `json:"banStatus,omitempty"` // Ban status: "ACTIVE", "BANNED", "SUSPENDED"
 	BanReason string `json:"banReason,omitempty"` // Reason for ban/suspension
 	BanTime   int64  `json:"banTime,omitempty"`   // Timestamp when ban was detected

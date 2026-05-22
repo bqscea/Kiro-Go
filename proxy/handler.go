@@ -2585,6 +2585,34 @@ func (h *Handler) apiBatchAccounts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch req.Action {
+	case "setSilent", "removeSilent":
+		silent := req.Action == "setSilent"
+		accounts := config.GetAccounts()
+		idSet := make(map[string]bool)
+		for _, id := range req.IDs {
+			idSet[id] = true
+		}
+		for _, a := range accounts {
+			if idSet[a.ID] {
+				a.Silent = silent
+				if silent {
+					// 加入静默：禁用账号
+					a.Enabled = false
+				} else {
+					// 移除静默：启用账号
+					a.Enabled = true
+					if a.BanStatus != "" && a.BanStatus != "ACTIVE" {
+						a.BanStatus = "ACTIVE"
+						a.BanReason = ""
+						a.BanTime = 0
+					}
+				}
+				config.UpdateAccount(a.ID, a)
+			}
+		}
+		h.pool.Reload()
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "count": len(req.IDs)})
+
 	case "enable", "disable":
 		enabled := req.Action == "enable"
 		accounts := config.GetAccounts()
@@ -3078,6 +3106,21 @@ func (h *Handler) apiImportCredentials(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) apiGetStatus(w http.ResponseWriter, r *http.Request) {
+	// 统计封禁账号
+	accounts := config.GetAccounts()
+	totalBanned := 0
+	todayBanned := 0
+	todayStart := time.Now().Truncate(24 * time.Hour).Unix()
+
+	for _, a := range accounts {
+		if a.BanStatus != "" && a.BanStatus != "ACTIVE" {
+			totalBanned++
+			if a.BanTime >= todayStart {
+				todayBanned++
+			}
+		}
+	}
+
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"accounts":        h.pool.Count(),
 		"available":       h.pool.AvailableCount(),
@@ -3088,6 +3131,8 @@ func (h *Handler) apiGetStatus(w http.ResponseWriter, r *http.Request) {
 		"totalCredits":    h.totalCredits,
 		"uptime":          time.Now().Unix() - h.startTime,
 		"groupBreakdown":  h.pool.GroupStats(),
+		"totalBanned":     totalBanned,
+		"todayBanned":     todayBanned,
 	})
 }
 
