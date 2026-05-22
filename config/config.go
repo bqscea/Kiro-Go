@@ -69,11 +69,13 @@ type Account struct {
 	OverageWeight int  `json:"overageWeight,omitempty"` // 1-10, lower values reduce overage request frequency
 
 	// Account status
-	Enabled   bool   `json:"enabled"`             // Whether account is active in the pool
-	Silent    bool   `json:"silent,omitempty"`    // Silent mode: account is disabled but not refreshed in UI
-	BanStatus string `json:"banStatus,omitempty"` // Ban status: "ACTIVE", "BANNED", "SUSPENDED"
-	BanReason string `json:"banReason,omitempty"` // Reason for ban/suspension
-	BanTime   int64  `json:"banTime,omitempty"`   // Timestamp when ban was detected
+	Enabled      bool   `json:"enabled"`                // Whether account is active in the pool
+	Silent       bool   `json:"silent,omitempty"`       // Silent mode: account is disabled but not banned
+	SilentReason string `json:"silentReason,omitempty"` // Reason for silent mode
+	SilentTime   int64  `json:"silentTime,omitempty"`   // Timestamp when silent mode was set
+	BanStatus    string `json:"banStatus,omitempty"`    // Ban status: "ACTIVE", "BANNED", "SUSPENDED"
+	BanReason    string `json:"banReason,omitempty"`    // Reason for ban/suspension
+	BanTime      int64  `json:"banTime,omitempty"`      // Timestamp when ban was detected
 
 	// Subscription information
 	SubscriptionType  string `json:"subscriptionType,omitempty"`  // Tier: FREE, PRO, PRO_PLUS, or POWER
@@ -165,11 +167,11 @@ type ModelAlias struct {
 // Config represents the global application configuration.
 type Config struct {
 	// Server settings
-	Password      string    `json:"password"`         // Admin panel password
-	Port          int       `json:"port"`             // HTTP server port (default: 8080)
-	Host          string    `json:"host"`             // HTTP server bind address (default: 0.0.0.0)
-	ApiKey        string    `json:"apiKey,omitempty"` // API key for client authentication (legacy single key)
-	RequireApiKey bool      `json:"requireApiKey"`    // Whether to enforce API key validation
+	Password      string `json:"password"`         // Admin panel password
+	Port          int    `json:"port"`             // HTTP server port (default: 8080)
+	Host          string `json:"host"`             // HTTP server bind address (default: 0.0.0.0)
+	ApiKey        string `json:"apiKey,omitempty"` // API key for client authentication (legacy single key)
+	RequireApiKey bool   `json:"requireApiKey"`    // Whether to enforce API key validation
 	// ApiKeys is the multi-key table. Each entry can be scoped to one or more
 	// account groups. A request authenticated with an entry will only be routed
 	// to accounts whose Group matches the entry's Groups (empty / "*" = any).
@@ -181,11 +183,11 @@ type Config struct {
 
 	// ModelAliases maps client-facing model names to internal Kiro models.
 	// Applied before model routing; thinking suffix is preserved.
-	ModelAliases []ModelAlias `json:"modelAliases,omitempty"`
-	KiroVersion   string    `json:"kiroVersion,omitempty"`
-	SystemVersion string    `json:"systemVersion,omitempty"`
-	NodeVersion   string    `json:"nodeVersion,omitempty"`
-	Accounts      []Account `json:"accounts"` // Registered Kiro accounts
+	ModelAliases  []ModelAlias `json:"modelAliases,omitempty"`
+	KiroVersion   string       `json:"kiroVersion,omitempty"`
+	SystemVersion string       `json:"systemVersion,omitempty"`
+	NodeVersion   string       `json:"nodeVersion,omitempty"`
+	Accounts      []Account    `json:"accounts"` // Registered Kiro accounts
 
 	// Thinking mode configuration for extended reasoning output
 	ThinkingSuffix       string `json:"thinkingSuffix,omitempty"`       // Model suffix to trigger thinking mode (default: "-thinking")
@@ -239,6 +241,12 @@ type Config struct {
 	FailedRequests  int     `json:"failedRequests,omitempty"`  // Failed requests count
 	TotalTokens     int     `json:"totalTokens,omitempty"`     // Total tokens processed
 	TotalCredits    float64 `json:"totalCredits,omitempty"`    // Total credits consumed
+
+	// Backup configuration
+	Backup BackupConfig `json:"backup,omitempty"`
+
+	// Alert configuration
+	Alert AlertConfig `json:"alert,omitempty"`
 }
 
 // AccountInfo contains account metadata retrieved from Kiro API.
@@ -309,6 +317,7 @@ func Load() error {
 // Save persists the current configuration to the JSON file.
 // Uses indented formatting for human readability.
 func Save() error {
+	AutoSnapshotBeforeSave()
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return err
@@ -367,7 +376,7 @@ func GetEnabledAccounts() []Account {
 	defer cfgLock.RUnlock()
 	var accounts []Account
 	for _, a := range cfg.Accounts {
-		if a.Enabled {
+		if a.Enabled && !a.Silent && (a.BanStatus == "" || a.BanStatus == "ACTIVE") {
 			accounts = append(accounts, a)
 		}
 	}

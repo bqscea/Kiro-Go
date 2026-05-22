@@ -232,6 +232,12 @@ func NewHandler() *Handler {
 	go h.backgroundRefresh()
 	// 启动后台统计保存 (每30秒保存一次)
 	go h.backgroundStatsSaver()
+	// 启动后台 observe tick (每 5s 推一次)
+	go h.backgroundObserveTick()
+	// 启动后台定时快照 (每 5min 检查)
+	go h.backgroundBackupScheduler()
+	// 启动后台告警检测 (每 1min 检查)
+	go h.backgroundAlertChecker()
 	return h
 }
 
@@ -1401,9 +1407,7 @@ func (h *Handler) handleClaudeStream(w http.ResponseWriter, r *http.Request, acc
 			inputTokens = inTok
 			outputTokens = outTok
 		},
-		OnError: func(err error) {
-			h.pool.RecordError(account.ID, strings.Contains(err.Error(), "429") || strings.Contains(err.Error(), "quota"))
-		},
+		OnError: func(err error) {},
 		OnCredits: func(c float64) {
 			credits = c
 		},
@@ -1415,7 +1419,10 @@ func (h *Handler) handleClaudeStream(w http.ResponseWriter, r *http.Request, acc
 	err := CallKiroAPI(account, payload, callback)
 	if err != nil {
 		h.recordFailure()
+		getObserveStore().RecordFailure(account.ID, model)
+		getObserveStore().RecordError(account.ID, account.Email, model, 0, err.Error())
 		h.pool.RecordError(account.ID, strings.Contains(err.Error(), "429") || strings.Contains(err.Error(), "quota"))
+		h.autoSilentIfSuspended(account.ID, err)
 		h.checkOverageError(err, account.ID)
 		h.sendSSE(w, flusher, "error", map[string]interface{}{
 			"type":  "error",
@@ -1448,6 +1455,7 @@ func (h *Handler) handleClaudeStream(w http.ResponseWriter, r *http.Request, acc
 	outputTokens = estimateClaudeOutputTokens(outputContent, thinkingOutput, toolUses)
 
 	h.recordSuccess(inputTokens, outputTokens, credits)
+	getObserveStore().RecordSuccess(account.ID, model, inputTokens, outputTokens, credits)
 	h.pool.RecordSuccess(account.ID)
 	h.pool.UpdateStats(account.ID, inputTokens+outputTokens, credits)
 	h.recordApiKeyUsage(r, inputTokens+outputTokens, credits)
@@ -1554,6 +1562,50 @@ func (h *Handler) checkOverageError(err error, accountID string) {
 	}
 }
 
+func (h *Handler) setAccountSilent(accountID, reason string) {
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		reason = "silent"
+	}
+	if len(reason) > 240 {
+		reason = reason[:240]
+	}
+	accounts := config.GetAccounts()
+	for _, a := range accounts {
+		if a.ID == accountID {
+			if a.Silent && a.SilentReason == reason {
+				return
+			}
+			a.Silent = true
+			a.Enabled = false
+			a.SilentReason = reason
+			a.SilentTime = time.Now().Unix()
+			if err := config.UpdateAccount(a.ID, a); err != nil {
+				logger.Errorf("[Silent] Failed to update account %s: %v", accountID, err)
+				return
+			}
+			h.pool.Reload()
+			logger.Warnf("[Silent] Account %s set silent: %s", a.Email, a.SilentReason)
+			return
+		}
+	}
+}
+
+func shouldAutoSilentError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errMsg := strings.ToLower(err.Error())
+	return strings.Contains(errMsg, "temporarily is suspended") ||
+		strings.Contains(errMsg, "temporarily suspended")
+}
+
+func (h *Handler) autoSilentIfSuspended(accountID string, err error) {
+	if shouldAutoSilentError(err) {
+		h.setAccountSilent(accountID, "auto suspended: "+err.Error())
+	}
+}
+
 // handleClaudeNonStream Claude 非流式响应
 func (h *Handler) handleClaudeNonStream(w http.ResponseWriter, r *http.Request, account *config.Account, payload *KiroPayload, model string, thinking bool, thinkingOpts claudeThinkingResponseOptions, estimatedInputTokens int, cacheUsage promptCacheUsage, cacheProfile *promptCacheProfile) {
 	var content string
@@ -1578,9 +1630,7 @@ func (h *Handler) handleClaudeNonStream(w http.ResponseWriter, r *http.Request, 
 			inputTokens = inTok
 			outputTokens = outTok
 		},
-		OnError: func(err error) {
-			h.pool.RecordError(account.ID, strings.Contains(err.Error(), "429"))
-		},
+		OnError: func(err error) {},
 		OnCredits: func(c float64) {
 			credits = c
 		},
@@ -1592,7 +1642,10 @@ func (h *Handler) handleClaudeNonStream(w http.ResponseWriter, r *http.Request, 
 	err := CallKiroAPI(account, payload, callback)
 	if err != nil {
 		h.recordFailure()
+		getObserveStore().RecordFailure(account.ID, model)
+		getObserveStore().RecordError(account.ID, account.Email, model, 0, err.Error())
 		h.pool.RecordError(account.ID, strings.Contains(err.Error(), "429"))
+		h.autoSilentIfSuspended(account.ID, err)
 		h.checkOverageError(err, account.ID)
 		h.sendClaudeError(w, 500, "api_error", err.Error())
 		return
@@ -1617,6 +1670,7 @@ func (h *Handler) handleClaudeNonStream(w http.ResponseWriter, r *http.Request, 
 	outputTokens = estimateClaudeOutputTokens(finalContent, rawThinkingContent, toolUses)
 
 	h.recordSuccess(inputTokens, outputTokens, credits)
+	getObserveStore().RecordSuccess(account.ID, model, inputTokens, outputTokens, credits)
 	h.pool.RecordSuccess(account.ID)
 	h.pool.UpdateStats(account.ID, inputTokens+outputTokens, credits)
 	h.recordApiKeyUsage(r, inputTokens+outputTokens, credits)
@@ -2035,9 +2089,7 @@ func (h *Handler) handleOpenAIStream(w http.ResponseWriter, r *http.Request, acc
 			inputTokens = inTok
 			outputTokens = outTok
 		},
-		OnError: func(err error) {
-			h.pool.RecordError(account.ID, strings.Contains(err.Error(), "429"))
-		},
+		OnError: func(err error) {},
 		OnCredits: func(c float64) {
 			credits = c
 		},
@@ -2049,7 +2101,10 @@ func (h *Handler) handleOpenAIStream(w http.ResponseWriter, r *http.Request, acc
 	err := CallKiroAPI(account, payload, callback)
 	if err != nil {
 		h.recordFailure()
+		getObserveStore().RecordFailure(account.ID, model)
+		getObserveStore().RecordError(account.ID, account.Email, model, 0, err.Error())
 		h.pool.RecordError(account.ID, strings.Contains(err.Error(), "429"))
+		h.autoSilentIfSuspended(account.ID, err)
 		h.checkOverageError(err, account.ID)
 		return
 	}
@@ -2081,6 +2136,7 @@ func (h *Handler) handleOpenAIStream(w http.ResponseWriter, r *http.Request, acc
 	}
 
 	h.recordSuccess(inputTokens, outputTokens, credits)
+	getObserveStore().RecordSuccess(account.ID, model, inputTokens, outputTokens, credits)
 	h.pool.RecordSuccess(account.ID)
 	h.pool.UpdateStats(account.ID, inputTokens+outputTokens, credits)
 	h.recordApiKeyUsage(r, inputTokens+outputTokens, credits)
@@ -2132,8 +2188,8 @@ func (h *Handler) handleOpenAINonStream(w http.ResponseWriter, r *http.Request, 
 		},
 		OnToolUse:  func(tu KiroToolUse) { toolUses = append(toolUses, tu) },
 		OnComplete: func(inTok, outTok int) { inputTokens = inTok; outputTokens = outTok },
-		OnError:    func(err error) { h.pool.RecordError(account.ID, strings.Contains(err.Error(), "429")) },
-		OnCredits:  func(c float64) { credits = c },
+		OnError: func(err error) {},
+		OnCredits: func(c float64) { credits = c },
 		OnContextUsage: func(pct float64) {
 			realInputTokens = int(pct * float64(getContextWindowSize(model)) / 100.0)
 		},
@@ -2142,7 +2198,10 @@ func (h *Handler) handleOpenAINonStream(w http.ResponseWriter, r *http.Request, 
 	err := CallKiroAPI(account, payload, callback)
 	if err != nil {
 		h.recordFailure()
+		getObserveStore().RecordFailure(account.ID, model)
+		getObserveStore().RecordError(account.ID, account.Email, model, 0, err.Error())
 		h.pool.RecordError(account.ID, strings.Contains(err.Error(), "429"))
+		h.autoSilentIfSuspended(account.ID, err)
 		h.checkOverageError(err, account.ID)
 		h.sendOpenAIError(w, 500, "server_error", err.Error())
 		return
@@ -2164,6 +2223,7 @@ func (h *Handler) handleOpenAINonStream(w http.ResponseWriter, r *http.Request, 
 	outputTokens = estimateOpenAIOutputTokens(finalContent, reasoningContent, toolUses)
 
 	h.recordSuccess(inputTokens, outputTokens, credits)
+	getObserveStore().RecordSuccess(account.ID, model, inputTokens, outputTokens, credits)
 	h.pool.RecordSuccess(account.ID)
 	h.pool.UpdateStats(account.ID, inputTokens+outputTokens, credits)
 	h.recordApiKeyUsage(r, inputTokens+outputTokens, credits)
@@ -2207,6 +2267,7 @@ func (h *Handler) ensureValidToken(account *config.Account) error {
 
 	accessToken, refreshToken, expiresAt, profileArn, err := auth.RefreshToken(account)
 	if err != nil {
+		h.autoSilentIfSuspended(account.ID, err)
 		return err
 	}
 
@@ -2347,6 +2408,51 @@ func (h *Handler) handleAdminAPI(w http.ResponseWriter, r *http.Request) {
 		h.apiGetModelAliases(w, r)
 	case path == "/model-aliases" && r.Method == "POST":
 		h.apiUpdateModelAliases(w, r)
+	case path == "/observe/overview" && r.Method == "GET":
+		h.apiObserveOverview(w, r)
+	case path == "/observe/account-heatmap" && r.Method == "GET":
+		h.apiObserveHeatmap(w, r)
+	case path == "/observe/keys" && r.Method == "GET":
+		h.apiObserveKeys(w, r)
+	case path == "/observe/model-mix" && r.Method == "GET":
+		h.apiObserveModelMix(w, r)
+	case path == "/observe/recent-errors" && r.Method == "GET":
+		h.apiObserveRecentErrors(w, r)
+	case path == "/alerts" && r.Method == "GET":
+		h.apiAlertsList(w, r)
+	case path == "/alerts" && r.Method == "POST":
+		h.apiAlertsCreate(w, r)
+	case path == "/alerts/history" && r.Method == "GET":
+		h.apiAlertsHistory(w, r)
+	case strings.HasPrefix(path, "/alerts/") && strings.HasSuffix(path, "/test") && r.Method == "POST":
+		id := strings.TrimSuffix(strings.TrimPrefix(path, "/alerts/"), "/test")
+		h.apiAlertsTest(w, r, id)
+	case strings.HasPrefix(path, "/alerts/") && r.Method == "GET":
+		h.apiAlertsGet(w, r, strings.TrimPrefix(path, "/alerts/"))
+	case strings.HasPrefix(path, "/alerts/") && r.Method == "PUT":
+		h.apiAlertsUpdate(w, r, strings.TrimPrefix(path, "/alerts/"))
+	case strings.HasPrefix(path, "/alerts/") && r.Method == "DELETE":
+		h.apiAlertsDelete(w, r, strings.TrimPrefix(path, "/alerts/"))
+	case path == "/backups" && r.Method == "GET":
+		h.apiBackupsList(w, r)
+	case path == "/backups" && r.Method == "POST":
+		h.apiBackupsCreate(w, r)
+	case path == "/backups/restore" && r.Method == "POST":
+		h.apiBackupsRestoreUpload(w, r)
+	case path == "/backups/schedule" && r.Method == "GET":
+		h.apiBackupsScheduleGet(w, r)
+	case path == "/backups/schedule" && r.Method == "POST":
+		h.apiBackupsScheduleUpdate(w, r)
+	case strings.HasPrefix(path, "/backups/") && strings.HasSuffix(path, "/download") && r.Method == "GET":
+		id := strings.TrimSuffix(strings.TrimPrefix(path, "/backups/"), "/download")
+		h.apiBackupsDownload(w, r, id)
+	case strings.HasPrefix(path, "/backups/") && strings.HasSuffix(path, "/restore") && r.Method == "POST":
+		id := strings.TrimSuffix(strings.TrimPrefix(path, "/backups/"), "/restore")
+		h.apiBackupsRestore(w, r, id)
+	case strings.HasPrefix(path, "/backups/") && r.Method == "GET":
+		h.apiBackupsGet(w, r, strings.TrimPrefix(path, "/backups/"))
+	case strings.HasPrefix(path, "/backups/") && r.Method == "DELETE":
+		h.apiBackupsDelete(w, r, strings.TrimPrefix(path, "/backups/"))
 	default:
 		w.WriteHeader(404)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Not Found"})
@@ -2378,6 +2484,9 @@ func (h *Handler) apiGetAccounts(w http.ResponseWriter, r *http.Request) {
 			"provider":          a.Provider,
 			"region":            a.Region,
 			"enabled":           a.Enabled,
+			"silent":            a.Silent,
+			"silentReason":      a.SilentReason,
+			"silentTime":        a.SilentTime,
 			"banStatus":         a.BanStatus,
 			"banReason":         a.BanReason,
 			"banTime":           a.BanTime,
@@ -2518,6 +2627,38 @@ func (h *Handler) apiUpdateAccount(w http.ResponseWriter, r *http.Request, id st
 	oldEnabled := existing.Enabled
 	if v, ok := updates["enabled"].(bool); ok {
 		existing.Enabled = v
+		if v {
+			if existing.BanStatus != "" && existing.BanStatus != "ACTIVE" {
+				existing.Enabled = false
+			} else {
+				existing.Silent = false
+				existing.SilentReason = ""
+				existing.SilentTime = 0
+			}
+		}
+	}
+	if v, ok := updates["silent"].(bool); ok {
+		existing.Silent = v
+		if v {
+			existing.Enabled = false
+			if reason, ok := updates["silentReason"].(string); ok && strings.TrimSpace(reason) != "" {
+				existing.SilentReason = strings.TrimSpace(reason)
+				if len(existing.SilentReason) > 240 {
+					existing.SilentReason = existing.SilentReason[:240]
+				}
+			} else if existing.SilentReason == "" {
+				existing.SilentReason = "manual"
+			}
+			if existing.SilentTime == 0 {
+				existing.SilentTime = time.Now().Unix()
+			}
+		} else {
+			if existing.BanStatus == "" || existing.BanStatus == "ACTIVE" {
+				existing.Enabled = true
+			}
+			existing.SilentReason = ""
+			existing.SilentTime = 0
+		}
 	}
 	if v, ok := updates["nickname"].(string); ok {
 		existing.Nickname = v
@@ -2598,14 +2739,15 @@ func (h *Handler) apiBatchAccounts(w http.ResponseWriter, r *http.Request) {
 				if silent {
 					// 加入静默：禁用账号
 					a.Enabled = false
+					a.SilentReason = "manual batch"
+					a.SilentTime = time.Now().Unix()
 				} else {
-					// 移除静默：启用账号
-					a.Enabled = true
-					if a.BanStatus != "" && a.BanStatus != "ACTIVE" {
-						a.BanStatus = "ACTIVE"
-						a.BanReason = ""
-						a.BanTime = 0
+					// 移除静默：仅恢复非封禁账号
+					if a.BanStatus == "" || a.BanStatus == "ACTIVE" {
+						a.Enabled = true
 					}
+					a.SilentReason = ""
+					a.SilentTime = 0
 				}
 				config.UpdateAccount(a.ID, a)
 			}
@@ -2623,15 +2765,21 @@ func (h *Handler) apiBatchAccounts(w http.ResponseWriter, r *http.Request) {
 		var toRefreshModels []config.Account
 		for _, a := range accounts {
 			if idSet[a.ID] {
-				// 记录本次从禁用→启用、且有 token 的账号
-				if enabled && !a.Enabled && a.AccessToken != "" {
-					toRefreshModels = append(toRefreshModels, a)
-				}
-				a.Enabled = enabled
-				if enabled && a.BanStatus != "" && a.BanStatus != "ACTIVE" {
-					a.BanStatus = "ACTIVE"
-					a.BanReason = ""
-					a.BanTime = 0
+				isBanned := a.BanStatus != "" && a.BanStatus != "ACTIVE"
+				if enabled {
+					if isBanned {
+						a.Enabled = false
+					} else {
+						if !a.Enabled && a.AccessToken != "" {
+							toRefreshModels = append(toRefreshModels, a)
+						}
+						a.Enabled = true
+						a.Silent = false
+						a.SilentReason = ""
+						a.SilentTime = 0
+					}
+				} else {
+					a.Enabled = false
 				}
 				config.UpdateAccount(a.ID, a)
 			}
@@ -3240,6 +3388,7 @@ func (h *Handler) apiResetStats(w http.ResponseWriter, r *http.Request) {
 	h.totalCredits = 0
 	h.creditsMu.Unlock()
 	config.UpdateStats(0, 0, 0, 0, 0)
+	getObserveStore().Reset()
 	json.NewEncoder(w).Encode(map[string]bool{"success": true})
 }
 
@@ -3468,6 +3617,9 @@ func (h *Handler) apiGetAccountFull(w http.ResponseWriter, r *http.Request, id s
 		"proxyURL":          account.ProxyURL,
 		"groups":            account.Groups,
 		"enabled":           account.Enabled,
+		"silent":            account.Silent,
+		"silentReason":      account.SilentReason,
+		"silentTime":        account.SilentTime,
 		"banStatus":         account.BanStatus,
 		"banReason":         account.BanReason,
 		"banTime":           account.BanTime,

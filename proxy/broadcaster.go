@@ -79,3 +79,8 @@ func publishAccountUpdated(accountID string) {
 func publishAccountsRefreshed() {
 	getBroadcaster().Publish(Event{Type: "accounts_refreshed"})
 }
+
+// publishObserveTick 便捷封装：observe 数据周期性 tick
+func publishObserveTick() {
+	getBroadcaster().Publish(Event{Type: "observe_tick"})
+}

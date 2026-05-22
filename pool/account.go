@@ -261,19 +261,21 @@ func (p *AccountPool) RecordSuccess(id string) {
 }
 
 // RecordError 记录请求错误，设置冷却
-func (p *AccountPool) RecordError(id string, isQuotaError bool) {
+func (p *AccountPool) RecordError(id string, isQuotaError bool) int {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	p.errorCounts[id]++
+	count := p.errorCounts[id]
 
 	if isQuotaError {
 		// 配额错误，冷却 1 小时
 		p.cooldowns[id] = time.Now().Add(time.Hour)
-	} else if p.errorCounts[id] >= 3 {
+	} else if count >= 3 {
 		// 连续 3 次错误，冷却 1 分钟
 		p.cooldowns[id] = time.Now().Add(time.Minute)
 	}
+	return count
 }
 
 // UpdateToken 更新账号 Token
