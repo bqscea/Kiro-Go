@@ -285,18 +285,19 @@ func (h *Handler) refreshAllAccounts() {
 			newAccessToken, newRefreshToken, newExpiresAt, profileArn, err := auth.RefreshToken(account)
 			if err != nil {
 				logger.Warnf("[BackgroundRefresh] Token refresh failed for %s: %v", account.Email, err)
-				continue
-			}
-			account.AccessToken = newAccessToken
-			if newRefreshToken != "" {
-				account.RefreshToken = newRefreshToken
-			}
-			account.ExpiresAt = newExpiresAt
-			config.UpdateAccountToken(account.ID, newAccessToken, newRefreshToken, newExpiresAt)
-			h.pool.UpdateToken(account.ID, newAccessToken, newRefreshToken, newExpiresAt)
-			if profileArn != "" {
-				account.ProfileArn = profileArn
-				config.UpdateAccountProfileArn(account.ID, profileArn)
+				// 不跳过，继续尝试刷新账户信息（可能会失败，但至少尝试）
+			} else {
+				account.AccessToken = newAccessToken
+				if newRefreshToken != "" {
+					account.RefreshToken = newRefreshToken
+				}
+				account.ExpiresAt = newExpiresAt
+				config.UpdateAccountToken(account.ID, newAccessToken, newRefreshToken, newExpiresAt)
+				h.pool.UpdateToken(account.ID, newAccessToken, newRefreshToken, newExpiresAt)
+				if profileArn != "" {
+					account.ProfileArn = profileArn
+					config.UpdateAccountProfileArn(account.ID, profileArn)
+				}
 			}
 		}
 
