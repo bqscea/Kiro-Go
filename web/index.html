@@ -2287,7 +2287,6 @@
                 }
                 selectedAccounts.clear();
                 updateBatchBar();
-                loadAccounts();
                 loadStats();
             } catch (e) {
                 alert(t('common.failed'));
@@ -2339,7 +2338,6 @@
                     alert(t('batch.setGroupResult', d.count || ids.length, groups.join(', ')));
                     closeBatchGroupSelectModal();
                     selectedAccounts.clear();
-                    loadAccounts();
                     refreshGroupOptions();
                 } else {
                     alert(t('common.failed') + ': ' + (d.error || ''));
@@ -2366,7 +2364,6 @@
                 }
                 selectedAccounts.clear();
                 updateBatchBar();
-                loadAccounts();
                 refreshGroupOptions();
             } catch (e) {
                 alert(t('common.failed'));
@@ -2389,7 +2386,6 @@
             alert(t('batch.refreshModelsResult', success, fail));
             selectedAccounts.clear();
             updateBatchBar();
-            loadAccounts();
         }
         async function batchSilent() {
             const ids = Array.from(selectedAccounts);
