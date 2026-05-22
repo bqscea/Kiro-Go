@@ -2357,7 +2357,7 @@ func (h *Handler) apiGetAccounts(w http.ResponseWriter, r *http.Request) {
 			"allowOverage":      a.AllowOverage,
 			"overageWeight":     a.OverageWeight,
 			"proxyURL":          a.ProxyURL,
-			"group":             a.Group,
+			"groups":            a.Groups,
 			"subscriptionType":  a.SubscriptionType,
 			"subscriptionTitle": a.SubscriptionTitle,
 			"daysRemaining":     a.DaysRemaining,
@@ -2506,8 +2506,14 @@ func (h *Handler) apiUpdateAccount(w http.ResponseWriter, r *http.Request, id st
 	if v, ok := updates["proxyURL"].(string); ok {
 		existing.ProxyURL = v
 	}
-	if v, ok := updates["group"].(string); ok {
-		existing.Group = strings.TrimSpace(v)
+	if v, ok := updates["groups"].([]interface{}); ok {
+		groups := make([]string, 0, len(v))
+		for _, g := range v {
+			if s, ok := g.(string); ok && strings.TrimSpace(s) != "" {
+				groups = append(groups, strings.TrimSpace(s))
+			}
+		}
+		existing.Groups = groups
 	}
 
 	if err := config.UpdateAccount(id, *existing); err != nil {
@@ -2533,7 +2539,8 @@ func (h *Handler) apiBatchAccounts(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		IDs    []string `json:"ids"`
 		Action string   `json:"action"` // "enable", "disable", "refresh", "setGroup"
-		Group  string   `json:"group"`  // 仅 setGroup 使用，空 = 清空分组
+		Group  string   `json:"group"`  // 向后兼容：单个分组
+		Groups []string `json:"groups"` // 新格式：多个分组
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.WriteHeader(400)
@@ -2631,7 +2638,19 @@ func (h *Handler) apiBatchAccounts(w http.ResponseWriter, r *http.Request) {
 		})
 
 	case "setGroup":
-		group := strings.TrimSpace(req.Group)
+		// 支持单个分组（向后兼容）或多个分组
+		var groups []string
+		if req.Group != "" {
+			// 向后兼容：单个分组字符串
+			groups = []string{strings.TrimSpace(req.Group)}
+		} else if len(req.Groups) > 0 {
+			// 新格式：多个分组
+			for _, g := range req.Groups {
+				if trimmed := strings.TrimSpace(g); trimmed != "" {
+					groups = append(groups, trimmed)
+				}
+			}
+		}
 		accounts := config.GetAccounts()
 		idSet := make(map[string]bool)
 		for _, id := range req.IDs {
@@ -2640,7 +2659,7 @@ func (h *Handler) apiBatchAccounts(w http.ResponseWriter, r *http.Request) {
 		count := 0
 		for _, a := range accounts {
 			if idSet[a.ID] {
-				a.Group = group
+				a.Groups = groups
 				if err := config.UpdateAccount(a.ID, a); err == nil {
 					count++
 				}
@@ -2650,7 +2669,7 @@ func (h *Handler) apiBatchAccounts(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": true,
 			"count":   count,
-			"group":   group,
+			"groups":  groups,
 		})
 
 	default:
@@ -3371,7 +3390,7 @@ func (h *Handler) apiGetAccountFull(w http.ResponseWriter, r *http.Request, id s
 		"allowOverage":      account.AllowOverage,
 		"overageWeight":     account.OverageWeight,
 		"proxyURL":          account.ProxyURL,
-		"group":             account.Group,
+		"groups":            account.Groups,
 		"enabled":           account.Enabled,
 		"banStatus":         account.BanStatus,
 		"banReason":         account.BanReason,
@@ -3707,10 +3726,20 @@ func (h *Handler) apiUpdateApiKeys(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]bool{"success": true})
 }
 
-// apiGetGroups 返回当前账号已用到的所有分组（用于 UI 下拉提示）
+// apiGetGroups 返回分组策略名称列表（用于 UI 分组选择）
 func (h *Handler) apiGetGroups(w http.ResponseWriter, r *http.Request) {
+	policies := config.GetGroupPolicies()
+	groups := make([]string, 0, len(policies))
+	seen := make(map[string]bool)
+	for _, p := range policies {
+		name := strings.TrimSpace(p.Name)
+		if name != "" && !seen[name] {
+			groups = append(groups, name)
+			seen[name] = true
+		}
+	}
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"groups": config.GetAccountGroups(),
+		"groups": groups,
 	})
 }
 

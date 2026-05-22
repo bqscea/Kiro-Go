@@ -56,9 +56,10 @@ type Account struct {
 	// Per-account outbound proxy (falls back to global ProxyURL if empty)
 	ProxyURL string `json:"proxyURL,omitempty"`
 
-	// Group is the account grouping label used by multi-API-key routing.
-	// Empty value is treated as the implicit "default" group.
-	Group string `json:"group,omitempty"`
+	// Groups is the account grouping labels used by multi-API-key routing.
+	// Empty array is treated as the implicit "default" group.
+	// Supports multiple groups per account for flexible routing.
+	Groups []string `json:"groups,omitempty"`
 
 	// Priority weight for load balancing (higher = more requests)
 	Weight int `json:"weight,omitempty"` // 0 or 1 = normal, 2+ = higher priority
@@ -523,12 +524,13 @@ func GetAccountGroups() []string {
 	seen := make(map[string]bool)
 	out := make([]string, 0)
 	for _, a := range cfg.Accounts {
-		g := a.Group
-		if g == "" || seen[g] {
-			continue
+		for _, g := range a.Groups {
+			if g == "" || seen[g] {
+				continue
+			}
+			seen[g] = true
+			out = append(out, g)
 		}
-		seen[g] = true
-		out = append(out, g)
 	}
 	return out
 }

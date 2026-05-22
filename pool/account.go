@@ -191,7 +191,7 @@ func (p *AccountPool) GetNextForModel(model string) *config.Account {
 		if seen[acc.ID] {
 			continue
 		}
-		if !groupPolicyAllowsModel(acc.Group, model) {
+		if !groupPolicyAllowsModel(acc.Groups, model) {
 			seen[acc.ID] = true
 			continue
 		}
@@ -219,7 +219,7 @@ func (p *AccountPool) GetNextForModel(model string) *config.Account {
 	var earliest time.Time
 	for i := range p.accounts {
 		acc := &p.accounts[i]
-		if !groupPolicyAllowsModel(acc.Group, model) {
+		if !groupPolicyAllowsModel(acc.Groups, model) {
 			continue
 		}
 		if !p.accountHasModel(acc.ID, model) {
@@ -397,29 +397,35 @@ func (p *AccountPool) GroupStats() []GroupStat {
 	}
 	groups := make(map[string]*bucket)
 	for _, a := range all {
-		g := strings.TrimSpace(a.Group)
-		if g == "" {
-			g = "default"
+		accountGroups := a.Groups
+		if len(accountGroups) == 0 {
+			accountGroups = []string{"default"}
 		}
-		b, ok := groups[g]
-		if !ok {
-			b = &bucket{}
-			groups[g] = b
+		for _, g := range accountGroups {
+			g = strings.TrimSpace(g)
+			if g == "" {
+				g = "default"
+			}
+			b, ok := groups[g]
+			if !ok {
+				b = &bucket{}
+				groups[g] = b
+			}
+			b.total++
+			if !a.Enabled {
+				b.disabled++
+				continue
+			}
+			if cd, ok := cooldowns[a.ID]; ok && now.Before(cd) {
+				b.cooldown++
+				continue
+			}
+			if a.ExpiresAt > 0 && now.Unix() > a.ExpiresAt-tokenRefreshSkewSeconds {
+				b.cooldown++
+				continue
+			}
+			b.avail++
 		}
-		b.total++
-		if !a.Enabled {
-			b.disabled++
-			continue
-		}
-		if cd, ok := cooldowns[a.ID]; ok && now.Before(cd) {
-			b.cooldown++
-			continue
-		}
-		if a.ExpiresAt > 0 && now.Unix() > a.ExpiresAt-tokenRefreshSkewSeconds {
-			b.cooldown++
-			continue
-		}
-		b.avail++
 	}
 
 	out := make([]GroupStat, 0, len(groups))
@@ -452,29 +458,44 @@ func normalizeGroup(g string) string {
 	return g
 }
 
-// groupAllowed reports whether the account's group is permitted by the
+// groupAllowed reports whether any of the account's groups is permitted by the
 // allowedGroups whitelist. nil/empty whitelist or a "*" entry means any group.
-func groupAllowed(accountGroup string, allowedGroups []string) bool {
+func groupAllowed(accountGroups []string, allowedGroups []string) bool {
 	if len(allowedGroups) == 0 {
 		return true
 	}
-	ag := normalizeGroup(accountGroup)
-	for _, g := range allowedGroups {
-		gg := strings.TrimSpace(g)
-		if gg == "*" {
-			return true
-		}
-		if normalizeGroup(gg) == ag {
-			return true
+	// Empty account groups treated as implicit "default" group
+	if len(accountGroups) == 0 {
+		accountGroups = []string{""}
+	}
+	for _, ag := range accountGroups {
+		normalized := normalizeGroup(ag)
+		for _, g := range allowedGroups {
+			gg := strings.TrimSpace(g)
+			if gg == "*" {
+				return true
+			}
+			if normalizeGroup(gg) == normalized {
+				return true
+			}
 		}
 	}
 	return false
 }
 
-// groupPolicyAllowsModel 在 GetNextForModelAndGroups 路由时，校验账号 Group 的策略
-// 是否允许该模型。空 group 视为 "default"。无策略 = 不限制。
-func groupPolicyAllowsModel(accountGroup, model string) bool {
-	return config.GroupAllowsModel(normalizeGroup(accountGroup), model)
+// groupPolicyAllowsModel 在 GetNextForModelAndGroups 路由时，校验账号 Groups 的策略
+// 是否允许该模型。空 groups 视为 "default"。无策略 = 不限制。
+// 只要任一分组允许该模型即可。
+func groupPolicyAllowsModel(accountGroups []string, model string) bool {
+	if len(accountGroups) == 0 {
+		return config.GroupAllowsModel("", model)
+	}
+	for _, g := range accountGroups {
+		if config.GroupAllowsModel(normalizeGroup(g), model) {
+			return true
+		}
+	}
+	return false
 }
 
 // GetNextForModelAndGroups picks the next available account that supports the model
@@ -503,11 +524,11 @@ func (p *AccountPool) GetNextForModelAndGroups(model string, allowedGroups []str
 		if seen[acc.ID] {
 			continue
 		}
-		if !groupAllowed(acc.Group, allowedGroups) {
+		if !groupAllowed(acc.Groups, allowedGroups) {
 			seen[acc.ID] = true
 			continue
 		}
-		if !groupPolicyAllowsModel(acc.Group, model) {
+		if !groupPolicyAllowsModel(acc.Groups, model) {
 			seen[acc.ID] = true
 			continue
 		}
@@ -535,10 +556,10 @@ func (p *AccountPool) GetNextForModelAndGroups(model string, allowedGroups []str
 	var earliest time.Time
 	for i := range p.accounts {
 		acc := &p.accounts[i]
-		if !groupAllowed(acc.Group, allowedGroups) {
+		if !groupAllowed(acc.Groups, allowedGroups) {
 			continue
 		}
-		if !groupPolicyAllowsModel(acc.Group, model) {
+		if !groupPolicyAllowsModel(acc.Groups, model) {
 			continue
 		}
 		if !p.accountHasModel(acc.ID, model) {

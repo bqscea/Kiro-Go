@@ -1200,6 +1200,20 @@
             <div id="updateBody"></div>
         </div>
     </div>
+    <div id="groupSelectModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header"><span class="modal-title" data-i18n="groupSelect.title"></span><button
+                    class="modal-close" onclick="closeGroupSelectModal()">&times;</button></div>
+            <div id="groupSelectBody"></div>
+        </div>
+    </div>
+    <div id="batchGroupSelectModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header"><span class="modal-title" data-i18n="batchGroupSelect.title"></span><button
+                    class="modal-close" onclick="closeBatchGroupSelectModal()">&times;</button></div>
+            <div id="batchGroupSelectBody"></div>
+        </div>
+    </div>
     <script>
         const i18n = {
             zh: {
@@ -1515,7 +1529,13 @@
                 'detail.proxyHint': '留空则使用全局代理，格式: socks5://host:port 或 http://host:port',
                 'detail.proxySaved': '代理已保存',
                 'detail.group': '所属分组',
+                'detail.selectGroups': '选择分组',
                 'detail.groupHint': '用于多 API Key 路由。留空则归入 "default" 隐式分组。',
+                'groupSelect.title': '选择账号分组',
+                'groupSelect.hint': '从 API 设置的分组策略中选择',
+                'batchGroupSelect.title': '批量设置分组',
+                'batchGroupSelect.hint': '为 {0} 个账号选择分组',
+                'batchGroupSelect.noGroups': '未配置分组策略。请先在 API 设置中添加分组策略。',
                 'detail.groupPlaceholder': '例如：team-a / vip',
                 'accounts.group': '分组',
                 'filter.allGroups': '全部分组',
@@ -1855,7 +1875,13 @@
                 'detail.proxyHint': 'Leave empty to use global proxy. Format: socks5://host:port or http://host:port',
                 'detail.proxySaved': 'Proxy saved',
                 'detail.group': 'Group',
+                'detail.selectGroups': 'Select Groups',
                 'detail.groupHint': 'Used by multi-API-key routing. Empty means the implicit "default" group.',
+                'groupSelect.title': 'Select Account Groups',
+                'groupSelect.hint': 'Choose from group policies in API settings',
+                'batchGroupSelect.title': 'Batch Set Groups',
+                'batchGroupSelect.hint': 'Select groups for {0} accounts',
+                'batchGroupSelect.noGroups': 'No group policies configured. Please add group policies in API Settings first.',
                 'detail.groupPlaceholder': 'e.g. team-a / vip',
                 'accounts.group': 'Group',
                 'filter.allGroups': 'All groups',
@@ -1930,13 +1956,13 @@
         let sortField = (function () { try { return localStorage.getItem('sortField') || ''; } catch (e) { return ''; } })();
 
         // 隐私模式状态管理
-        let privacyModeEnabled = true;
+        let privacyModeEnabled = false;
 
         // 初始化隐私模式
         function initPrivacyMode() {
             try {
                 const saved = localStorage.getItem('privacyMode');
-                privacyModeEnabled = saved === null ? true : saved === 'true';
+                privacyModeEnabled = saved === null ? false : saved === 'true';
                 const toggle = document.getElementById('privacyModeToggle');
                 if (toggle) toggle.checked = privacyModeEnabled;
             } catch (e) {
@@ -2108,7 +2134,7 @@
         async function loadAccounts() {
             const res = await fetch('/admin/api/accounts', { headers: { 'X-Admin-Password': password } });
             accountsData = await res.json();
-            const groups = Array.from(new Set((accountsData || []).map(a => a.group).filter(g => g && g !== ''))).sort();
+            const groups = Array.from(new Set((accountsData || []).flatMap(a => a.groups || []).filter(g => g && g !== ''))).sort();
             window.allGroups = groups;
             const sel = document.getElementById('filterGroupSelect');
             if (sel) {
@@ -2134,15 +2160,15 @@
                 if (filterStatus === 'disabled' && (a.enabled || (a.banStatus && a.banStatus !== 'ACTIVE'))) return false;
                 if (filterStatus === 'banned' && (!a.banStatus || a.banStatus === 'ACTIVE')) return false;
                 if (filterGroup === '__default__') {
-                    if (a.group && a.group !== '') return false;
+                    if (a.groups && a.groups.length > 0) return false;
                 } else if (filterGroup !== 'all') {
-                    if ((a.group || '') !== filterGroup) return false;
+                    if (!(a.groups || []).includes(filterGroup)) return false;
                 }
                 if (filterKeyword) {
                     const kw = filterKeyword.toLowerCase();
                     const email = (a.email || '').toLowerCase();
-                    const grp = (a.group || '').toLowerCase();
-                    if (!email.includes(kw) && !grp.includes(kw)) return false;
+                    const grp = (a.groups || []).map(g => g.toLowerCase());
+                    if (!email.includes(kw) && !grp.some(g => g.includes(kw))) return false;
                 }
                 return true;
             });
@@ -2240,30 +2266,54 @@
         async function batchSetGroup() {
             const ids = Array.from(selectedAccounts);
             if (ids.length === 0) return;
-            const existing = (window.allGroups || []).join(', ') || '—';
-            const group = prompt(t('batch.setGroupPrompt', ids.length, existing), '');
-            if (group === null) return; // cancelled
-            const trimmed = (group || '').trim();
+            await refreshGroupOptions();
+            if ((window.allGroups || []).length === 0) {
+                alert(t('batchGroupSelect.noGroups'));
+                return;
+            }
+            openBatchGroupSelectModal(ids);
+        }
+        function openBatchGroupSelectModal(ids) {
+            currentBatchGroupIds = ids;
+            const body = document.getElementById('batchGroupSelectBody');
+            body.innerHTML =
+                '<p style="color:#64748b;font-size:13px;margin-bottom:12px">' + t('batchGroupSelect.hint', ids.length) + '</p>' +
+                '<div id="batchGroupSelectCheckboxes" style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">' +
+                (window.allGroups || []).map(g => {
+                    return '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px;border:1px solid #e2e8f0;border-radius:6px;background:#f8fafc"><input type="checkbox" value="' + g + '" class="batch-group-checkbox"><span>' + g + '</span></label>';
+                }).join('') +
+                '</div>' +
+                '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+                '<button class="btn btn-secondary" onclick="closeBatchGroupSelectModal()">' + t('common.cancel') + '</button>' +
+                '<button class="btn btn-primary" onclick="saveBatchGroupFromModal()">' + t('common.save') + '</button>' +
+                '</div>';
+            document.getElementById('batchGroupSelectModal').classList.add('active');
+        }
+        function closeBatchGroupSelectModal() {
+            document.getElementById('batchGroupSelectModal').classList.remove('active');
+            currentBatchGroupIds = null;
+        }
+        async function saveBatchGroupFromModal() {
+            if (!currentBatchGroupIds) return;
+            const ids = currentBatchGroupIds;
+            const checkboxes = document.querySelectorAll('.batch-group-checkbox:checked');
+            const groups = Array.from(checkboxes).map(cb => cb.value);
             try {
                 const res = await fetch('/admin/api/accounts/batch', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'X-Admin-Password': password },
-                    body: JSON.stringify({ ids, action: 'setGroup', group: trimmed })
+                    body: JSON.stringify({ ids, action: 'setGroup', groups })
                 });
                 const d = await res.json();
                 if (d.success) {
-                    if (trimmed === '') {
-                        alert(t('batch.clearGroupResult', d.count || ids.length));
-                    } else {
-                        alert(t('batch.setGroupResult', d.count || ids.length, trimmed));
-                    }
+                    alert(t('batch.setGroupResult', d.count || ids.length, groups.join(', ')));
+                    closeBatchGroupSelectModal();
+                    selectedAccounts.clear();
+                    loadAccounts();
+                    refreshGroupOptions();
                 } else {
                     alert(t('common.failed') + ': ' + (d.error || ''));
                 }
-                selectedAccounts.clear();
-                updateBatchBar();
-                loadAccounts();
-                refreshGroupOptions();
             } catch (e) {
                 alert(t('common.failed'));
             }
@@ -2366,7 +2416,7 @@
                     getTrialBadge(a) +
                     weightBadge +
                     overageBadge +
-                    (a.group ? '<span class="badge" style="background:#0ea5e9;color:#fff">' + t('accounts.group') + ':' + a.group + '</span>' : '') +
+                    ((a.groups || []).length > 0 ? (a.groups || []).map(g => '<span class="badge" style="background:#0ea5e9;color:#fff">' + t('accounts.group') + ':' + g + '</span>').join('') : '') +
                     '<span class="badge badge-info">' + formatAuthMethod(a.provider || a.authMethod) + '</span>' +
                     getStatusBadge(a) +
                     '</div>' +
@@ -2440,6 +2490,9 @@
                     badges.push('<span class="badge badge-banned">' + t('accounts.banned') + '</span>');
                 } else if (a.banStatus === 'SUSPENDED') {
                     badges.push('<span class="badge badge-suspended">' + t('accounts.suspended') + '</span>');
+                } else {
+                    // 其他非 ACTIVE 状态，显示原始状态值
+                    badges.push('<span class="badge badge-banned">' + a.banStatus + '</span>');
                 }
                 // 封禁账号必定显示禁用状态
                 badges.push('<span class="badge badge-warning">' + t('accounts.disabled') + '</span>');
@@ -2517,11 +2570,12 @@
                 '</div>' +
                 '<button class="btn btn-sm btn-primary" onclick="saveOverageSettings(\'' + id + '\')">' + t('detail.save') + '</button>' +
                 '</div>' +
-                '<div class="detail-section"><h4>' + t('detail.group') + '</h4><div class="machine-id-row">' +
-                '<input type="text" id="groupInput" value="' + (a.group || '') + '" data-i18n-placeholder="detail.groupPlaceholder" placeholder="' + t('detail.groupPlaceholder') + '" style="flex:1" list="groupSuggest">' +
-                '<datalist id="groupSuggest">' + (window.allGroups || []).map(g => '<option value="' + g + '"></option>').join('') + '</datalist>' +
-                '<button class="btn btn-sm btn-primary" onclick="saveGroup(\'' + id + '\')">' + t('detail.save') + '</button>' +
-                '</div><p style="color:#64748b;font-size:12px;margin-top:4px">' + t('detail.groupHint') + '</p></div>' +
+                '<div class="detail-section"><h4>' + t('detail.group') + '</h4>' +
+                '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px">' +
+                ((a.groups || []).length > 0 ? (a.groups || []).map(g => '<span class="badge" style="background:#0ea5e9;color:#fff">' + g + '</span>').join('') : '<span style="color:#94a3b8;font-size:13px">—</span>') +
+                '</div>' +
+                '<button class="btn btn-sm btn-primary" onclick="openGroupSelectModal(\'' + id + '\', ' + JSON.stringify(a.groups || []) + ')">' + t('detail.selectGroups') + '</button>' +
+                '<p style="color:#64748b;font-size:12px;margin-top:4px">' + t('detail.groupHint') + '</p></div>' +
                 '<div class="detail-section"><h4>' + t('detail.proxyURL') + '</h4><div class="machine-id-row">' +
                 '<input type="text" id="proxyURLInput" value="' + (a.proxyURL || '') + '" placeholder="socks5://host:port" style="flex:1">' +
                 '<button class="btn btn-sm btn-primary" onclick="saveProxyURL(\'' + id + '\')">' + t('detail.save') + '</button>' +
@@ -2632,12 +2686,59 @@
                 if (d.success) { alert(t('detail.proxySaved')); loadAccounts(); } else { alert(t('detail.saveFailed') + ': ' + d.error); }
             } catch (e) { alert(t('detail.saveFailed')); }
         }
+        let currentGroupAccountId = null;
+        let currentBatchGroupIds = null;
+        function openGroupSelectModal(id, currentGroups) {
+            currentGroupAccountId = id;
+            const body = document.getElementById('groupSelectBody');
+            body.innerHTML =
+                '<p style="color:#64748b;font-size:13px;margin-bottom:12px">' + t('groupSelect.hint') + '</p>' +
+                '<div id="groupSelectCheckboxes" style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">' +
+                (window.allGroups || []).map(g => {
+                    const checked = (currentGroups || []).includes(g) ? ' checked' : '';
+                    return '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px;border:1px solid #e2e8f0;border-radius:6px;background:#f8fafc"><input type="checkbox" value="' + g + '" class="group-select-checkbox"' + checked + '><span>' + g + '</span></label>';
+                }).join('') +
+                '</div>' +
+                '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+                '<button class="btn btn-secondary" onclick="closeGroupSelectModal()">' + t('common.cancel') + '</button>' +
+                '<button class="btn btn-primary" onclick="saveGroupFromModal()">' + t('common.save') + '</button>' +
+                '</div>';
+            document.getElementById('groupSelectModal').classList.add('active');
+        }
+        function closeGroupSelectModal() {
+            document.getElementById('groupSelectModal').classList.remove('active');
+            currentGroupAccountId = null;
+        }
+        async function saveGroupFromModal() {
+            if (!currentGroupAccountId) return;
+            const checkboxes = document.querySelectorAll('.group-select-checkbox:checked');
+            const groups = Array.from(checkboxes).map(cb => cb.value);
+            try {
+                const res = await fetch('/admin/api/accounts/' + currentGroupAccountId, {
+                    method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Admin-Password': password },
+                    body: JSON.stringify({ groups })
+                });
+                const d = await res.json();
+                if (d.success) {
+                    alert(t('detail.saved'));
+                    closeGroupSelectModal();
+                    loadAccounts();
+                    refreshGroupOptions();
+                    showAccountDetail(currentGroupAccountId);
+                } else {
+                    alert(t('detail.saveFailed') + ': ' + d.error);
+                }
+            } catch (e) {
+                alert(t('detail.saveFailed'));
+            }
+        }
         async function saveGroup(id) {
-            const group = document.getElementById('groupInput').value.trim();
+            const checkboxes = document.querySelectorAll('.group-checkbox:checked');
+            const groups = Array.from(checkboxes).map(cb => cb.value);
             try {
                 const res = await fetch('/admin/api/accounts/' + id, {
                     method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Admin-Password': password },
-                    body: JSON.stringify({ group })
+                    body: JSON.stringify({ groups })
                 });
                 const d = await res.json();
                 if (d.success) { alert(t('detail.saved')); loadAccounts(); refreshGroupOptions(); } else { alert(t('detail.saveFailed') + ': ' + d.error); }
