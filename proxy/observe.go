@@ -12,6 +12,7 @@ import (
 const (
 	observeMinuteSlots = 1440 // 24h × 60min
 	observeRecentErrs  = 100  // 最近错误流容量
+	observeRecentReqs  = 200  // 最近请求流容量
 )
 
 // minuteBucket 一分钟内的聚合数据
@@ -44,17 +45,32 @@ type errorRecord struct {
 	Message   string `json:"message,omitempty"`
 }
 
+// requestRecord 请求记录条目
+type requestRecord struct {
+	TS         int64   `json:"ts"`
+	AccountID  string  `json:"accountId"`
+	Email      string  `json:"email,omitempty"`
+	Model      string  `json:"model"`
+	InTokens   int     `json:"inTokens"`
+	OutTokens  int     `json:"outTokens"`
+	TotalTokens int    `json:"totalTokens"`
+	Credits    float64 `json:"credits"`
+	Success    bool    `json:"success"`
+}
+
 // observeStore 全局只读单例，写入加锁。
 type observeStore struct {
-	mu             sync.RWMutex
-	startedAt      int64
-	globalRing     [observeMinuteSlots]minuteBucket
-	accountRings   map[string]*[observeMinuteSlots]minuteBucket
-	modelStats     map[string]*modelStat
-	recentErrors   []errorRecord // 循环写入
-	recentErrIdx   int
-	maxAccountRing int // 上限保护，超过则不再新建账号桶（按 LRU 淘汰）
-	accountTouched map[string]int64
+	mu              sync.RWMutex
+	startedAt       int64
+	globalRing      [observeMinuteSlots]minuteBucket
+	accountRings    map[string]*[observeMinuteSlots]minuteBucket
+	modelStats      map[string]*modelStat
+	recentErrors    []errorRecord  // 循环写入
+	recentErrIdx    int
+	recentRequests  []requestRecord // 循环写入
+	recentReqIdx    int
+	maxAccountRing  int // 上限保护，超过则不再新建账号桶（按 LRU 淘汰）
+	accountTouched  map[string]int64
 }
 
 var (
@@ -65,12 +81,13 @@ var (
 func getObserveStore() *observeStore {
 	observeStoreOnce.Do(func() {
 		observeStoreInst = &observeStore{
-			startedAt:      time.Now().Unix(),
-			accountRings:   make(map[string]*[observeMinuteSlots]minuteBucket),
-			modelStats:     make(map[string]*modelStat),
-			recentErrors:   make([]errorRecord, observeRecentErrs),
-			maxAccountRing: 200,
-			accountTouched: make(map[string]int64),
+			startedAt:       time.Now().Unix(),
+			accountRings:    make(map[string]*[observeMinuteSlots]minuteBucket),
+			modelStats:      make(map[string]*modelStat),
+			recentErrors:    make([]errorRecord, observeRecentErrs),
+			recentRequests:  make([]requestRecord, observeRecentReqs),
+			maxAccountRing:  200,
+			accountTouched:  make(map[string]int64),
 		}
 	})
 	return observeStoreInst
@@ -213,6 +230,28 @@ func (s *observeStore) RecordError(accountID, email, model string, status int, m
 	defer s.mu.Unlock()
 	s.recentErrors[s.recentErrIdx] = rec
 	s.recentErrIdx = (s.recentErrIdx + 1) % observeRecentErrs
+}
+
+// RecordRequest 记录一次请求（成功或失败）
+func (s *observeStore) RecordRequest(accountID, email, model string, inTokens, outTokens int, credits float64, success bool) {
+	if s == nil {
+		return
+	}
+	rec := requestRecord{
+		TS:          time.Now().Unix(),
+		AccountID:   accountID,
+		Email:       email,
+		Model:       model,
+		InTokens:    inTokens,
+		OutTokens:   outTokens,
+		TotalTokens: inTokens + outTokens,
+		Credits:     credits,
+		Success:     success,
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.recentRequests[s.recentReqIdx] = rec
+	s.recentReqIdx = (s.recentReqIdx + 1) % observeRecentReqs
 }
 
 // ==================== 读出快照 ====================
@@ -421,6 +460,28 @@ func (s *observeStore) RecentErrors(limit int) []errorRecord {
 	for i := 0; i < observeRecentErrs && len(out) < limit; i++ {
 		idx := (s.recentErrIdx - 1 - i + observeRecentErrs) % observeRecentErrs
 		rec := s.recentErrors[idx]
+		if rec.TS == 0 {
+			continue
+		}
+		out = append(out, rec)
+	}
+	return out
+}
+
+// RecentRequests 返回最近的请求记录（最新的在前）
+func (s *observeStore) RecentRequests(limit int) []requestRecord {
+	if s == nil {
+		return nil
+	}
+	if limit <= 0 || limit > observeRecentReqs {
+		limit = observeRecentReqs
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]requestRecord, 0, limit)
+	for i := 0; i < observeRecentReqs && len(out) < limit; i++ {
+		idx := (s.recentReqIdx - 1 - i + observeRecentReqs) % observeRecentReqs
+		rec := s.recentRequests[idx]
 		if rec.TS == 0 {
 			continue
 		}

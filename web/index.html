@@ -927,6 +927,7 @@
             <div class="tab" data-tab="observe" data-i18n="tabs.observe"></div>
             <div class="tab" data-tab="backups" data-i18n="tabs.backups"></div>
             <div class="tab" data-tab="alerts" data-i18n="tabs.alerts"></div>
+            <div class="tab" data-tab="requests" data-i18n="tabs.requests"></div>
         </div>
         <div id="tabAccounts" class="tab-content">
             <div class="card">
@@ -1262,6 +1263,12 @@
                 <div id="alertsHistory" style="padding:4px"></div>
             </div>
         </div>
+        <div id="tabRequests" class="tab-content hidden">
+            <div class="card">
+                <div class="card-header"><span class="card-title" data-i18n="requests.title"></span></div>
+                <div id="requestsList" style="padding:4px;max-height:600px;overflow-y:auto"></div>
+            </div>
+        </div>
     </div>
     <div id="addModal" class="modal">
         <div class="modal-content">
@@ -1327,6 +1334,7 @@
                 'tabs.observe': '观测',
                 'tabs.backups': '备份',
                 'tabs.alerts': '告警',
+                'tabs.requests': '请求记录',
                 'accounts.title': '账号列表',
                 'accounts.add': '添加账号',
                 'accounts.empty': '暂无账号',
@@ -1753,7 +1761,17 @@
                 'alerts.noRules': '暂无规则',
                 'alerts.noHistory': '暂无历史',
                 'alerts.test': '测试',
-                'alerts.confirmDelete': '确定删除此规则？'
+                'alerts.confirmDelete': '确定删除此规则？',
+                'requests.title': '请求记录',
+                'requests.empty': '暂无记录',
+                'requests.time': '时间',
+                'requests.account': '账号',
+                'requests.model': '模型',
+                'requests.tokens': 'Tokens',
+                'requests.credits': 'Credits',
+                'requests.status': '状态',
+                'requests.success': '成功',
+                'requests.failed': '失败'
             },
             en: {
                 'login.subtitle': 'Enter admin password to login',
@@ -1775,6 +1793,7 @@
                 'tabs.observe': 'Observe',
                 'tabs.backups': 'Backups',
                 'tabs.alerts': 'Alerts',
+                'tabs.requests': 'Requests',
                 'accounts.title': 'Account List',
                 'accounts.add': 'Add Account',
                 'accounts.empty': 'No accounts',
@@ -2191,7 +2210,17 @@
                 'alerts.noRules': 'No rules',
                 'alerts.noHistory': 'No history',
                 'alerts.test': 'Test',
-                'alerts.confirmDelete': 'Delete this rule?'
+                'alerts.confirmDelete': 'Delete this rule?',
+                'requests.title': 'Request History',
+                'requests.empty': 'No requests',
+                'requests.time': 'Time',
+                'requests.account': 'Account',
+                'requests.model': 'Model',
+                'requests.tokens': 'Tokens',
+                'requests.credits': 'Credits',
+                'requests.status': 'Status',
+                'requests.success': 'Success',
+                'requests.failed': 'Failed'
             }
         };
         let currentLang = localStorage.getItem('kiro_lang') || 'zh';
@@ -3763,10 +3792,11 @@
             document.querySelectorAll('.tab').forEach(tabEl => tabEl.classList.toggle('active', tabEl.dataset.tab === tab));
             document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
             document.getElementById('tab' + tab.charAt(0).toUpperCase() + tab.slice(1)).classList.remove('hidden');
-            if (tab === 'observe') { startObserve(); stopBackups(); stopAlerts(); }
-            else if (tab === 'backups') { startBackups(); stopObserve(); stopAlerts(); }
-            else if (tab === 'alerts') { startAlerts(); stopObserve(); stopBackups(); }
-            else { stopObserve(); stopBackups(); stopAlerts(); }
+            if (tab === 'observe') { startObserve(); stopBackups(); stopAlerts(); stopRequests(); }
+            else if (tab === 'backups') { startBackups(); stopObserve(); stopAlerts(); stopRequests(); }
+            else if (tab === 'alerts') { startAlerts(); stopObserve(); stopBackups(); stopRequests(); }
+            else if (tab === 'requests') { startRequests(); stopObserve(); stopBackups(); stopAlerts(); }
+            else { stopObserve(); stopBackups(); stopAlerts(); stopRequests(); }
         }
         async function toggleAccount(id, enabled) {
             await fetch('/admin/api/accounts/' + id, {
@@ -4724,6 +4754,40 @@
             loadAlertsHistory();
         }
         function stopAlerts() { /* no-op */ }
+
+        // ========== Requests ==========
+        async function loadRequests() {
+            const res = await fetch(`/admin/api/observe/recent-requests?password=${encodeURIComponent(password)}&limit=200`);
+            const data = await res.json();
+            const reqs = data.requests || [];
+            const html = reqs.length === 0 ? `<div style="padding:12px;color:#64748b">${t('requests.empty')}</div>` :
+                `<table style="width:100%;border-collapse:collapse;font-size:13px">
+                    <thead><tr style="border-bottom:2px solid #e2e8f0;text-align:left">
+                        <th style="padding:8px;font-weight:600">${t('requests.time')}</th>
+                        <th style="padding:8px;font-weight:600">${t('requests.account')}</th>
+                        <th style="padding:8px;font-weight:600">${t('requests.model')}</th>
+                        <th style="padding:8px;font-weight:600">${t('requests.tokens')}</th>
+                        <th style="padding:8px;font-weight:600">${t('requests.credits')}</th>
+                        <th style="padding:8px;font-weight:600">${t('requests.status')}</th>
+                    </tr></thead>
+                    <tbody>${reqs.map(r => `
+                        <tr style="border-bottom:1px solid #f1f5f9">
+                            <td style="padding:8px;color:#64748b;font-size:12px">${new Date(r.ts * 1000).toLocaleString()}</td>
+                            <td style="padding:8px;font-size:12px">${escapeHtml(r.email || r.accountId.slice(0,8))}</td>
+                            <td style="padding:8px;font-size:12px">${escapeHtml(r.model)}</td>
+                            <td style="padding:8px;font-size:12px">${r.inTokens + r.outTokens} (${r.inTokens}/${r.outTokens})</td>
+                            <td style="padding:8px;font-size:12px">${r.credits.toFixed(2)}</td>
+                            <td style="padding:8px"><span style="padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;${r.success ? 'background:#dcfce7;color:#166534' : 'background:#fee2e2;color:#991b1b'}">${r.success ? t('requests.success') : t('requests.failed')}</span></td>
+                        </tr>
+                    `).join('')}</tbody>
+                </table>`;
+            document.getElementById('requestsList').innerHTML = html;
+        }
+
+        function startRequests() {
+            loadRequests();
+        }
+        function stopRequests() { /* no-op */ }
     </script>
 </body>
 

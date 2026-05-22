@@ -234,6 +234,12 @@ func NewHandler() *Handler {
 	go h.backgroundStatsSaver()
 	// 启动后台 observe tick (每 5s 推一次)
 	go h.backgroundObserveTick()
+	// 启动后台 observe 数据保存 (每 5min 保存一次)
+	go h.backgroundObserveSaver()
+	// 启动时加载观测数据
+	if err := getObserveStore().Load(); err != nil {
+		logger.Warnf("[Observe] Failed to load: %v", err)
+	}
 	// 启动后台定时快照 (每 5min 检查)
 	go h.backgroundBackupScheduler()
 	// 启动后台告警检测 (每 1min 检查)
@@ -1429,6 +1435,7 @@ func (h *Handler) handleClaudeStream(w http.ResponseWriter, r *http.Request, acc
 		h.recordFailure()
 		getObserveStore().RecordFailure(account.ID, model)
 		getObserveStore().RecordError(account.ID, account.Email, model, 0, err.Error())
+		getObserveStore().RecordRequest(account.ID, account.Email, model, 0, 0, 0, false)
 		h.pool.RecordError(account.ID, strings.Contains(err.Error(), "429") || strings.Contains(err.Error(), "quota"))
 		h.autoSilentIfSuspended(account.ID, err)
 		h.checkOverageError(err, account.ID)
@@ -1464,6 +1471,7 @@ func (h *Handler) handleClaudeStream(w http.ResponseWriter, r *http.Request, acc
 
 	h.recordSuccess(inputTokens, outputTokens, credits)
 	getObserveStore().RecordSuccess(account.ID, model, inputTokens, outputTokens, credits)
+	getObserveStore().RecordRequest(account.ID, account.Email, model, inputTokens, outputTokens, credits, true)
 	h.pool.RecordSuccess(account.ID)
 	h.pool.UpdateStats(account.ID, inputTokens+outputTokens, credits)
 	h.recordApiKeyUsage(r, inputTokens+outputTokens, credits)
@@ -1652,6 +1660,7 @@ func (h *Handler) handleClaudeNonStream(w http.ResponseWriter, r *http.Request, 
 		h.recordFailure()
 		getObserveStore().RecordFailure(account.ID, model)
 		getObserveStore().RecordError(account.ID, account.Email, model, 0, err.Error())
+		getObserveStore().RecordRequest(account.ID, account.Email, model, 0, 0, 0, false)
 		h.pool.RecordError(account.ID, strings.Contains(err.Error(), "429"))
 		h.autoSilentIfSuspended(account.ID, err)
 		h.checkOverageError(err, account.ID)
@@ -1679,6 +1688,7 @@ func (h *Handler) handleClaudeNonStream(w http.ResponseWriter, r *http.Request, 
 
 	h.recordSuccess(inputTokens, outputTokens, credits)
 	getObserveStore().RecordSuccess(account.ID, model, inputTokens, outputTokens, credits)
+	getObserveStore().RecordRequest(account.ID, account.Email, model, inputTokens, outputTokens, credits, true)
 	h.pool.RecordSuccess(account.ID)
 	h.pool.UpdateStats(account.ID, inputTokens+outputTokens, credits)
 	h.recordApiKeyUsage(r, inputTokens+outputTokens, credits)
@@ -2111,6 +2121,7 @@ func (h *Handler) handleOpenAIStream(w http.ResponseWriter, r *http.Request, acc
 		h.recordFailure()
 		getObserveStore().RecordFailure(account.ID, model)
 		getObserveStore().RecordError(account.ID, account.Email, model, 0, err.Error())
+		getObserveStore().RecordRequest(account.ID, account.Email, model, 0, 0, 0, false)
 		h.pool.RecordError(account.ID, strings.Contains(err.Error(), "429"))
 		h.autoSilentIfSuspended(account.ID, err)
 		h.checkOverageError(err, account.ID)
@@ -2145,6 +2156,7 @@ func (h *Handler) handleOpenAIStream(w http.ResponseWriter, r *http.Request, acc
 
 	h.recordSuccess(inputTokens, outputTokens, credits)
 	getObserveStore().RecordSuccess(account.ID, model, inputTokens, outputTokens, credits)
+	getObserveStore().RecordRequest(account.ID, account.Email, model, inputTokens, outputTokens, credits, true)
 	h.pool.RecordSuccess(account.ID)
 	h.pool.UpdateStats(account.ID, inputTokens+outputTokens, credits)
 	h.recordApiKeyUsage(r, inputTokens+outputTokens, credits)
@@ -2208,6 +2220,7 @@ func (h *Handler) handleOpenAINonStream(w http.ResponseWriter, r *http.Request, 
 		h.recordFailure()
 		getObserveStore().RecordFailure(account.ID, model)
 		getObserveStore().RecordError(account.ID, account.Email, model, 0, err.Error())
+		getObserveStore().RecordRequest(account.ID, account.Email, model, 0, 0, 0, false)
 		h.pool.RecordError(account.ID, strings.Contains(err.Error(), "429"))
 		h.autoSilentIfSuspended(account.ID, err)
 		h.checkOverageError(err, account.ID)
@@ -2232,6 +2245,7 @@ func (h *Handler) handleOpenAINonStream(w http.ResponseWriter, r *http.Request, 
 
 	h.recordSuccess(inputTokens, outputTokens, credits)
 	getObserveStore().RecordSuccess(account.ID, model, inputTokens, outputTokens, credits)
+	getObserveStore().RecordRequest(account.ID, account.Email, model, inputTokens, outputTokens, credits, true)
 	h.pool.RecordSuccess(account.ID)
 	h.pool.UpdateStats(account.ID, inputTokens+outputTokens, credits)
 	h.recordApiKeyUsage(r, inputTokens+outputTokens, credits)
@@ -2426,6 +2440,8 @@ func (h *Handler) handleAdminAPI(w http.ResponseWriter, r *http.Request) {
 		h.apiObserveModelMix(w, r)
 	case path == "/observe/recent-errors" && r.Method == "GET":
 		h.apiObserveRecentErrors(w, r)
+	case path == "/observe/recent-requests" && r.Method == "GET":
+		h.apiObserveRecentRequests(w, r)
 	case path == "/alerts" && r.Method == "GET":
 		h.apiAlertsList(w, r)
 	case path == "/alerts" && r.Method == "POST":
