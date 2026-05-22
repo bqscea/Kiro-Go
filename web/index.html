@@ -911,6 +911,14 @@
                 <div class="stat-value" id="statCredits">0</div>
                 <div class="stat-label">Credits</div>
             </div>
+            <div class="stat-card">
+                <div class="stat-value" id="statBanned">0</div>
+                <div class="stat-label" data-i18n="stats.banned"></div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="statTodayBanned">0</div>
+                <div class="stat-label" data-i18n="stats.todayBanned"></div>
+            </div>
         </div>
         <div class="tabs">
             <div class="tab active" data-tab="accounts" data-i18n="tabs.accounts"></div>
@@ -1228,6 +1236,8 @@
                 'stats.requests': '请求',
                 'stats.success': '成功',
                 'stats.failed': '失败',
+                'stats.banned': '总封禁',
+                'stats.todayBanned': '今日封禁',
                 'tabs.accounts': '账号',
                 'tabs.settings': '设置',
                 'tabs.api': 'API',
@@ -1584,6 +1594,8 @@
                 'stats.requests': 'Requests',
                 'stats.success': 'Success',
                 'stats.failed': 'Failed',
+                'stats.banned': 'Banned',
+                'stats.todayBanned': 'Today',
                 'tabs.accounts': 'Accounts',
                 'tabs.settings': 'Settings',
                 'tabs.api': 'API',
@@ -1953,6 +1965,7 @@
         let selectedAccounts = new Set();
         let filterKeyword = (function () { try { return localStorage.getItem('filterKeyword') || ''; } catch (e) { return ''; } })();
         let filterStatus = (function () { try { return localStorage.getItem('filterStatus') || 'all'; } catch (e) { return 'all'; } })();
+        let filterGroup = (function () { try { return localStorage.getItem('filterGroup') || 'all'; } catch (e) { return 'all'; } })();
         let sortField = (function () { try { return localStorage.getItem('sortField') || ''; } catch (e) { return ''; } })();
 
         // 隐私模式状态管理
@@ -2096,6 +2109,8 @@
             document.getElementById('statFailed').textContent = d.failedRequests || 0;
             document.getElementById('statTokens').textContent = formatNum(d.totalTokens || 0);
             document.getElementById('statCredits').textContent = (d.totalCredits || 0).toFixed(1);
+            document.getElementById('statBanned').textContent = d.totalBanned || 0;
+            document.getElementById('statTodayBanned').textContent = d.todayBanned || 0;
             renderGroupBoard(d.groupBreakdown || []);
         }
         function renderGroupBoard(groups) {
@@ -2138,7 +2153,7 @@
             window.allGroups = groups;
             const sel = document.getElementById('filterGroupSelect');
             if (sel) {
-                const cur = sel.value || 'all';
+                const cur = filterGroup || sel.value || 'all';
                 sel.innerHTML = '<option value="all">' + t('filter.allGroups') + '</option>' +
                     '<option value="__default__">default</option>' +
                     groups.map(g => '<option value="' + g + '"' + (cur === g ? ' selected' : '') + '>' + g + '</option>').join('');
@@ -2154,7 +2169,6 @@
             } catch (e) { /* silent */ }
         }
         function getFilteredAccounts() {
-            const filterGroup = (document.getElementById('filterGroupSelect') || {}).value || 'all';
             return accountsData.filter(a => {
                 if (filterStatus === 'enabled' && !a.enabled) return false;
                 if (filterStatus === 'disabled' && (a.enabled || (a.banStatus && a.banStatus !== 'ACTIVE'))) return false;
@@ -2176,9 +2190,11 @@
         function onFilterChange() {
             filterKeyword = document.getElementById('filterSearch').value;
             filterStatus = document.getElementById('filterStatusSelect').value;
+            filterGroup = (document.getElementById('filterGroupSelect') || {}).value || 'all';
             try {
                 localStorage.setItem('filterKeyword', filterKeyword);
                 localStorage.setItem('filterStatus', filterStatus);
+                localStorage.setItem('filterGroup', filterGroup);
             } catch (e) { }
             renderAccounts();
         }
@@ -2257,7 +2273,6 @@
                 }
                 selectedAccounts.clear();
                 updateBatchBar();
-                loadAccounts();
                 loadStats();
             } catch (e) {
                 alert(t('common.failed'));
@@ -2309,7 +2324,6 @@
                     alert(t('batch.setGroupResult', d.count || ids.length, groups.join(', ')));
                     closeBatchGroupSelectModal();
                     selectedAccounts.clear();
-                    loadAccounts();
                     refreshGroupOptions();
                 } else {
                     alert(t('common.failed') + ': ' + (d.error || ''));
@@ -2336,7 +2350,6 @@
                 }
                 selectedAccounts.clear();
                 updateBatchBar();
-                loadAccounts();
                 refreshGroupOptions();
             } catch (e) {
                 alert(t('common.failed'));
@@ -2359,7 +2372,6 @@
             alert(t('batch.refreshModelsResult', success, fail));
             selectedAccounts.clear();
             updateBatchBar();
-            loadAccounts();
         }
         async function refreshAllModels() {
             if (!confirm(t('models.confirmRefreshAll'))) return;
