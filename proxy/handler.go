@@ -280,6 +280,11 @@ func (h *Handler) refreshAllAccounts() {
 			continue
 		}
 
+		// 跳过被封禁或静默的账号，避免浪费 API 调用
+		if account.Silent || (account.BanStatus != "" && account.BanStatus != "ACTIVE") {
+			continue
+		}
+
 		// 检查 token 是否需要刷新
 		if account.ExpiresAt > 0 && time.Now().Unix() > account.ExpiresAt-tokenRefreshSkewSeconds {
 			newAccessToken, newRefreshToken, newExpiresAt, profileArn, err := auth.RefreshToken(account)
