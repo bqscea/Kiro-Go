@@ -10,6 +10,7 @@ import (
 	"kiro-go/logger"
 	"kiro-go/pool"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -2377,6 +2378,42 @@ func (h *Handler) apiGetAccounts(w http.ResponseWriter, r *http.Request) {
 			"lastUsed":          stats.LastUsed,
 		}
 	}
+
+	// 排序支持：?sort=requestCount 或 ?sort=-requestCount（降序）
+	sortBy := r.URL.Query().Get("sort")
+	if sortBy != "" {
+		descending := strings.HasPrefix(sortBy, "-")
+		field := strings.TrimPrefix(sortBy, "-")
+
+		sort.Slice(result, func(i, j int) bool {
+			var less bool
+			switch field {
+			case "requestCount":
+				less = result[i]["requestCount"].(int) < result[j]["requestCount"].(int)
+			case "errorCount":
+				less = result[i]["errorCount"].(int) < result[j]["errorCount"].(int)
+			case "totalTokens":
+				less = result[i]["totalTokens"].(int) < result[j]["totalTokens"].(int)
+			case "totalCredits":
+				less = result[i]["totalCredits"].(float64) < result[j]["totalCredits"].(float64)
+			case "lastUsed":
+				less = result[i]["lastUsed"].(int64) < result[j]["lastUsed"].(int64)
+			case "email":
+				less = result[i]["email"].(string) < result[j]["email"].(string)
+			case "usageCurrent":
+				less = result[i]["usageCurrent"].(float64) < result[j]["usageCurrent"].(float64)
+			case "usagePercent":
+				less = result[i]["usagePercent"].(float64) < result[j]["usagePercent"].(float64)
+			default:
+				return false
+			}
+			if descending {
+				return !less
+			}
+			return less
+		})
+	}
+
 	json.NewEncoder(w).Encode(result)
 }
 

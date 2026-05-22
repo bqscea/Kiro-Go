@@ -958,6 +958,16 @@
                         <select id="filterGroupSelect" onchange="onFilterChange()" style="padding:4px 6px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;background:#fff;cursor:pointer">
                             <option value="all" data-i18n="filter.allGroups"></option>
                         </select>
+                        <select id="sortSelect" onchange="onSortChange()" style="padding:4px 6px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;background:#fff;cursor:pointer">
+                            <option value="" data-i18n="sort.default"></option>
+                            <option value="-requestCount" data-i18n="sort.requestCountDesc"></option>
+                            <option value="requestCount" data-i18n="sort.requestCountAsc"></option>
+                            <option value="-totalTokens" data-i18n="sort.totalTokensDesc"></option>
+                            <option value="-totalCredits" data-i18n="sort.totalCreditsDesc"></option>
+                            <option value="-usagePercent" data-i18n="sort.usagePercentDesc"></option>
+                            <option value="-lastUsed" data-i18n="sort.lastUsedDesc"></option>
+                            <option value="email" data-i18n="sort.emailAsc"></option>
+                        </select>
                     </div>
                 </div>
                 <div id="groupBoard" style="padding:0 20px 12px;display:none"></div>
@@ -1509,6 +1519,14 @@
                 'detail.groupPlaceholder': '例如：team-a / vip',
                 'accounts.group': '分组',
                 'filter.allGroups': '全部分组',
+                'sort.default': '默认排序',
+                'sort.requestCountDesc': '请求次数 ↓',
+                'sort.requestCountAsc': '请求次数 ↑',
+                'sort.totalTokensDesc': 'Token 数 ↓',
+                'sort.totalCreditsDesc': 'Credits ↓',
+                'sort.usagePercentDesc': '用量百分比 ↓',
+                'sort.lastUsedDesc': '最后使用 ↓',
+                'sort.emailAsc': '邮箱 A→Z',
                 'accounts.test': '测试',
                 'accounts.testing': '测试中...',
                 'accounts.testSuccess': '测试成功',
@@ -1841,6 +1859,14 @@
                 'detail.groupPlaceholder': 'e.g. team-a / vip',
                 'accounts.group': 'Group',
                 'filter.allGroups': 'All groups',
+                'sort.default': 'Default order',
+                'sort.requestCountDesc': 'Requests ↓',
+                'sort.requestCountAsc': 'Requests ↑',
+                'sort.totalTokensDesc': 'Tokens ↓',
+                'sort.totalCreditsDesc': 'Credits ↓',
+                'sort.usagePercentDesc': 'Usage % ↓',
+                'sort.lastUsedDesc': 'Last used ↓',
+                'sort.emailAsc': 'Email A→Z',
                 'accounts.test': 'Test',
                 'accounts.testing': 'Testing...',
                 'accounts.testSuccess': 'Test OK',
@@ -1901,6 +1927,7 @@
         let selectedAccounts = new Set();
         let filterKeyword = (function () { try { return localStorage.getItem('filterKeyword') || ''; } catch (e) { return ''; } })();
         let filterStatus = (function () { try { return localStorage.getItem('filterStatus') || 'all'; } catch (e) { return 'all'; } })();
+        let sortField = (function () { try { return localStorage.getItem('sortField') || ''; } catch (e) { return ''; } })();
 
         // 隐私模式状态管理
         let privacyModeEnabled = true;
@@ -2021,6 +2048,8 @@
                 if (searchEl) searchEl.value = filterKeyword || '';
                 const statusEl = document.getElementById('filterStatusSelect');
                 if (statusEl) statusEl.value = filterStatus || 'all';
+                const sortEl = document.getElementById('sortSelect');
+                if (sortEl) sortEl.value = sortField || '';
             } catch (e) { }
         }
         async function loadData() {
@@ -2126,6 +2155,31 @@
                 localStorage.setItem('filterStatus', filterStatus);
             } catch (e) { }
             renderAccounts();
+        }
+        function onSortChange() {
+            sortField = document.getElementById('sortSelect').value;
+            try { localStorage.setItem('sortField', sortField); } catch (e) { }
+            renderAccounts();
+        }
+        function applySort(list) {
+            if (!sortField) return list;
+            const desc = sortField.charAt(0) === '-';
+            const field = desc ? sortField.slice(1) : sortField;
+            const arr = list.slice();
+            arr.sort((a, b) => {
+                let va = a[field], vb = b[field];
+                if (typeof va === 'string' || typeof vb === 'string') {
+                    va = (va || '').toString().toLowerCase();
+                    vb = (vb || '').toString().toLowerCase();
+                    if (va < vb) return desc ? 1 : -1;
+                    if (va > vb) return desc ? -1 : 1;
+                    return 0;
+                }
+                va = Number(va) || 0;
+                vb = Number(vb) || 0;
+                return desc ? vb - va : va - vb;
+            });
+            return arr;
         }
         function toggleSelectAll(checked) {
             const filtered = getFilteredAccounts();
@@ -2287,7 +2341,7 @@
         function renderAccounts() {
             const container = document.getElementById('accountsList');
             if (!container) return;
-            const filtered = getFilteredAccounts();
+            const filtered = applySort(getFilteredAccounts());
             if (filtered.length === 0) {
                 container.innerHTML = '<p style="text-align:center;color:#64748b;padding:30px">' + t('accounts.empty') + '</p>';
                 return;
