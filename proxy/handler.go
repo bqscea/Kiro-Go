@@ -747,6 +747,22 @@ func (h *Handler) refreshModelsCache() {
 		models, err := ListAvailableModels(account)
 		if err != nil {
 			logger.Warnf("[ModelsCache] Failed to refresh for %s: %v", account.Email, err)
+
+			// 检测 403 封禁状态，自动禁用账号
+			errMsg := err.Error()
+			if strings.Contains(errMsg, "403") && (strings.Contains(errMsg, "temporarily is suspended") || strings.Contains(errMsg, "temporarily suspended")) {
+				logger.Warnf("[ModelsCache] Account %s is suspended, auto-disabling", account.Email)
+
+				updatedAccount := *account
+				updatedAccount.Enabled = false
+				updatedAccount.BanStatus = "BANNED"
+				updatedAccount.BanReason = "Kiro temporarily suspended - security precaution"
+				updatedAccount.BanTime = time.Now().Unix()
+
+				if updateErr := config.UpdateAccount(account.ID, updatedAccount); updateErr != nil {
+					logger.Errorf("[ModelsCache] Failed to update account ban status: %v", updateErr)
+				}
+			}
 			continue
 		}
 		// 缓存每账号可用模型，用于路由时过滤
@@ -775,6 +791,21 @@ func (h *Handler) fetchAndCacheAccountModels(account *config.Account) error {
 	}
 	models, err := ListAvailableModels(account)
 	if err != nil {
+		// 检测 403 封禁状态，自动禁用账号
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "403") && (strings.Contains(errMsg, "temporarily is suspended") || strings.Contains(errMsg, "temporarily suspended")) {
+			logger.Warnf("[fetchAndCacheAccountModels] Account %s is suspended, auto-disabling", account.Email)
+
+			updatedAccount := *account
+			updatedAccount.Enabled = false
+			updatedAccount.BanStatus = "BANNED"
+			updatedAccount.BanReason = "Kiro temporarily suspended - security precaution"
+			updatedAccount.BanTime = time.Now().Unix()
+
+			if updateErr := config.UpdateAccount(account.ID, updatedAccount); updateErr != nil {
+				logger.Errorf("[fetchAndCacheAccountModels] Failed to update account ban status: %v", updateErr)
+			}
+		}
 		return err
 	}
 	modelIDs := make([]string, 0, len(models))
@@ -3437,6 +3468,22 @@ func (h *Handler) apiGetAccountModels(w http.ResponseWriter, r *http.Request, id
 
 	models, err := ListAvailableModels(account)
 	if err != nil {
+		// 检测 403 封禁状态，自动禁用账号
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "403") && (strings.Contains(errMsg, "temporarily is suspended") || strings.Contains(errMsg, "temporarily suspended")) {
+			logger.Warnf("[apiRefreshAccountModels] Account %s is suspended, auto-disabling", account.Email)
+
+			updatedAccount := *account
+			updatedAccount.Enabled = false
+			updatedAccount.BanStatus = "BANNED"
+			updatedAccount.BanReason = "Kiro temporarily suspended - security precaution"
+			updatedAccount.BanTime = time.Now().Unix()
+
+			if updateErr := config.UpdateAccount(account.ID, updatedAccount); updateErr != nil {
+				logger.Errorf("[apiRefreshAccountModels] Failed to update account ban status: %v", updateErr)
+			}
+		}
+
 		w.WriteHeader(500)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
