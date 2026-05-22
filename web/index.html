@@ -4288,6 +4288,7 @@
         let observeTimer = null;
         let observeSSE = null;
         let observeActive = false;
+        let requestsActive = false;
 
         function fmtNum(n) {
             if (n == null) return '0';
@@ -4527,11 +4528,14 @@
             try {
                 const url = '/admin/api/events?password=' + encodeURIComponent(password);
                 observeSSE = new EventSource(url);
-                observeSSE.addEventListener('observe_tick', () => { if (observeActive) loadObserve(); });
+                observeSSE.addEventListener('observe_tick', () => {
+                    if (observeActive) loadObserve();
+                    if (requestsActive) loadRequests();
+                });
                 observeSSE.onerror = () => {
                     // 5s 后重连
                     if (observeSSE) { observeSSE.close(); observeSSE = null; }
-                    setTimeout(() => { if (observeActive) ensureObserveSSE(); }, 5000);
+                    setTimeout(() => { if (observeActive || requestsActive) ensureObserveSSE(); }, 5000);
                 };
             } catch (e) { /* SSE not supported, fallback to polling */ }
         }
@@ -4785,9 +4789,13 @@
         }
 
         function startRequests() {
+            requestsActive = true;
+            ensureObserveSSE();
             loadRequests();
         }
-        function stopRequests() { /* no-op */ }
+        function stopRequests() {
+            requestsActive = false;
+        }
     </script>
 </body>
 
