@@ -4,6 +4,7 @@ package pool
 
 import (
 	"kiro-go/config"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -190,6 +191,10 @@ func (p *AccountPool) GetNextForModel(model string) *config.Account {
 		if seen[acc.ID] {
 			continue
 		}
+		if !groupPolicyAllowsModel(acc.Group, model) {
+			seen[acc.ID] = true
+			continue
+		}
 		if !p.accountHasModel(acc.ID, model) {
 			seen[acc.ID] = true
 			continue
@@ -214,6 +219,9 @@ func (p *AccountPool) GetNextForModel(model string) *config.Account {
 	var earliest time.Time
 	for i := range p.accounts {
 		acc := &p.accounts[i]
+		if !groupPolicyAllowsModel(acc.Group, model) {
+			continue
+		}
 		if !p.accountHasModel(acc.ID, model) {
 			continue
 		}
@@ -363,8 +371,192 @@ func (p *AccountPool) GetAllAccounts() []config.Account {
 	return result
 }
 
+// GroupStat 单个分组的运行时状态。
+type GroupStat struct {
+	Group     string `json:"group"`
+	Total     int    `json:"total"`
+	Available int    `json:"available"`
+	Cooldown  int    `json:"cooldown"`
+	Disabled  int    `json:"disabled"`
+}
+
+// GroupStats 按分组聚合账号池状态。
+// 包含禁用账号（通过 config.GetAccounts），便于运维查看整体健康。
+func (p *AccountPool) GroupStats() []GroupStat {
+	p.mu.RLock()
+	cooldowns := make(map[string]time.Time, len(p.cooldowns))
+	for k, v := range p.cooldowns {
+		cooldowns[k] = v
+	}
+	p.mu.RUnlock()
+
+	all := config.GetAccounts()
+	now := time.Now()
+	type bucket struct {
+		total, avail, cooldown, disabled int
+	}
+	groups := make(map[string]*bucket)
+	for _, a := range all {
+		g := strings.TrimSpace(a.Group)
+		if g == "" {
+			g = "default"
+		}
+		b, ok := groups[g]
+		if !ok {
+			b = &bucket{}
+			groups[g] = b
+		}
+		b.total++
+		if !a.Enabled {
+			b.disabled++
+			continue
+		}
+		if cd, ok := cooldowns[a.ID]; ok && now.Before(cd) {
+			b.cooldown++
+			continue
+		}
+		if a.ExpiresAt > 0 && now.Unix() > a.ExpiresAt-tokenRefreshSkewSeconds {
+			b.cooldown++
+			continue
+		}
+		b.avail++
+	}
+
+	out := make([]GroupStat, 0, len(groups))
+	for g, b := range groups {
+		out = append(out, GroupStat{Group: g, Total: b.total, Available: b.avail, Cooldown: b.cooldown, Disabled: b.disabled})
+	}
+	// 稳定排序：default 优先，其余按字母升序
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Group == "default" {
+			return true
+		}
+		if out[j].Group == "default" {
+			return false
+		}
+		return out[i].Group < out[j].Group
+	})
+	return out
+}
+
 func isOverUsageLimit(acc config.Account) bool {
 	return acc.UsageLimit > 0 && acc.UsageCurrent >= acc.UsageLimit
+}
+
+// normalizeGroup treats empty as the implicit "default" group.
+func normalizeGroup(g string) string {
+	g = strings.TrimSpace(g)
+	if g == "" {
+		return "default"
+	}
+	return g
+}
+
+// groupAllowed reports whether the account's group is permitted by the
+// allowedGroups whitelist. nil/empty whitelist or a "*" entry means any group.
+func groupAllowed(accountGroup string, allowedGroups []string) bool {
+	if len(allowedGroups) == 0 {
+		return true
+	}
+	ag := normalizeGroup(accountGroup)
+	for _, g := range allowedGroups {
+		gg := strings.TrimSpace(g)
+		if gg == "*" {
+			return true
+		}
+		if normalizeGroup(gg) == ag {
+			return true
+		}
+	}
+	return false
+}
+
+// groupPolicyAllowsModel 在 GetNextForModelAndGroups 路由时，校验账号 Group 的策略
+// 是否允许该模型。空 group 视为 "default"。无策略 = 不限制。
+func groupPolicyAllowsModel(accountGroup, model string) bool {
+	return config.GroupAllowsModel(normalizeGroup(accountGroup), model)
+}
+
+// GetNextForModelAndGroups picks the next available account that supports the model
+// and whose group is permitted by allowedGroups. allowedGroups nil/empty = any group.
+func (p *AccountPool) GetNextForModelAndGroups(model string, allowedGroups []string) *config.Account {
+	if len(allowedGroups) == 0 {
+		return p.GetNextForModel(model)
+	}
+
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	if len(p.accounts) == 0 {
+		return nil
+	}
+
+	allowOverUsage := config.GetAllowOverUsage()
+	now := time.Now()
+	n := len(p.accounts)
+	seen := make(map[string]bool)
+
+	for i := 0; i < n; i++ {
+		idx := atomic.AddUint64(&p.currentIndex, 1) % uint64(n)
+		acc := &p.accounts[idx]
+
+		if seen[acc.ID] {
+			continue
+		}
+		if !groupAllowed(acc.Group, allowedGroups) {
+			seen[acc.ID] = true
+			continue
+		}
+		if !groupPolicyAllowsModel(acc.Group, model) {
+			seen[acc.ID] = true
+			continue
+		}
+		if !p.accountHasModel(acc.ID, model) {
+			seen[acc.ID] = true
+			continue
+		}
+		if cooldown, ok := p.cooldowns[acc.ID]; ok && now.Before(cooldown) {
+			seen[acc.ID] = true
+			continue
+		}
+		if acc.ExpiresAt > 0 && time.Now().Unix() > acc.ExpiresAt-tokenRefreshSkewSeconds {
+			seen[acc.ID] = true
+			continue
+		}
+		if isOverUsageLimit(*acc) && !acc.AllowOverage && !allowOverUsage {
+			seen[acc.ID] = true
+			continue
+		}
+		return acc
+	}
+
+	// fallback：找冷却时间最短且支持该模型 + group 的账号
+	var best *config.Account
+	var earliest time.Time
+	for i := range p.accounts {
+		acc := &p.accounts[i]
+		if !groupAllowed(acc.Group, allowedGroups) {
+			continue
+		}
+		if !groupPolicyAllowsModel(acc.Group, model) {
+			continue
+		}
+		if !p.accountHasModel(acc.ID, model) {
+			continue
+		}
+		if isOverUsageLimit(*acc) && !acc.AllowOverage && !allowOverUsage {
+			continue
+		}
+		if cooldown, ok := p.cooldowns[acc.ID]; ok {
+			if best == nil || cooldown.Before(earliest) {
+				best = acc
+				earliest = cooldown
+			}
+		} else {
+			return acc
+		}
+	}
+	return best
 }
 
 func effectiveWeight(weight int) int {

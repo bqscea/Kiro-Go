@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"strings"
 	"sync"
 )
 
@@ -54,6 +55,10 @@ type Account struct {
 
 	// Per-account outbound proxy (falls back to global ProxyURL if empty)
 	ProxyURL string `json:"proxyURL,omitempty"`
+
+	// Group is the account grouping label used by multi-API-key routing.
+	// Empty value is treated as the implicit "default" group.
+	Group string `json:"group,omitempty"`
 
 	// Priority weight for load balancing (higher = more requests)
 	Weight int `json:"weight,omitempty"` // 0 or 1 = normal, 2+ = higher priority
@@ -107,14 +112,70 @@ type PromptFilterRule struct {
 	Enabled bool   `json:"enabled"`           // Whether this rule is active
 }
 
+// ApiKeyEntry binds an API key to a list of allowed account groups.
+// Empty Groups (or containing "*") means the key may use all groups.
+// Empty Group on an account is treated as the implicit "default" group.
+type ApiKeyEntry struct {
+	ID      string   `json:"id"`               // Unique entry identifier
+	Name    string   `json:"name,omitempty"`   // Human-readable label
+	Key     string   `json:"key"`              // The actual API key
+	Groups  []string `json:"groups,omitempty"` // Allowed account groups; empty / ["*"] = all
+	Enabled bool     `json:"enabled"`          // Whether this entry is active
+
+	// Rate limiting (0 = unlimited)
+	RPM       int `json:"rpm,omitempty"`       // Max requests per minute
+	RPD       int `json:"rpd,omitempty"`       // Max requests per day
+	MaxTokens int `json:"maxTokens,omitempty"` // Max tokens per single request (0 = unlimited)
+
+	// Persistent usage statistics (updated by handler, periodically saved)
+	RequestCount int     `json:"requestCount,omitempty"`
+	TotalTokens  int     `json:"totalTokens,omitempty"`
+	TotalCredits float64 `json:"totalCredits,omitempty"`
+	LastUsed     int64   `json:"lastUsed,omitempty"`
+}
+
+// GroupPolicy binds an account group to a model whitelist / blacklist.
+// AllowedModels empty = no restriction (any model may be served by accounts in this group).
+// DenyModels takes precedence over AllowedModels: if a model is in DenyModels it is forbidden,
+// even if it appears in AllowedModels.
+// Match is case-insensitive on the model id (after thinking-suffix stripping in the handler).
+type GroupPolicy struct {
+	Name          string   `json:"name"`                    // Group label (matches Account.Group; "default" = implicit empty)
+	AllowedModels []string `json:"allowedModels,omitempty"` // Whitelist; empty = allow all
+	DenyModels    []string `json:"denyModels,omitempty"`    // Blacklist; checked first
+	Description   string   `json:"description,omitempty"`   // Free-form note
+}
+
+// ModelAlias maps a client-facing model name to an internal Kiro model.
+// Match is case-insensitive on the trimmed `From`. Thinking suffix on the
+// incoming model id is preserved across the mapping by the handler.
+type ModelAlias struct {
+	From    string `json:"from"`              // Client-facing model id (e.g. "gpt-4o")
+	To      string `json:"to"`                // Internal model id (e.g. "claude-sonnet-4-6")
+	Enabled bool   `json:"enabled"`           // Whether this alias is active
+	Note    string `json:"note,omitempty"`    // Free-form note
+}
+
 // Config represents the global application configuration.
 type Config struct {
 	// Server settings
 	Password      string    `json:"password"`         // Admin panel password
 	Port          int       `json:"port"`             // HTTP server port (default: 8080)
 	Host          string    `json:"host"`             // HTTP server bind address (default: 0.0.0.0)
-	ApiKey        string    `json:"apiKey,omitempty"` // API key for client authentication
+	ApiKey        string    `json:"apiKey,omitempty"` // API key for client authentication (legacy single key)
 	RequireApiKey bool      `json:"requireApiKey"`    // Whether to enforce API key validation
+	// ApiKeys is the multi-key table. Each entry can be scoped to one or more
+	// account groups. A request authenticated with an entry will only be routed
+	// to accounts whose Group matches the entry's Groups (empty / "*" = any).
+	ApiKeys []ApiKeyEntry `json:"apiKeys,omitempty"`
+
+	// GroupPolicies binds account groups to model whitelist/blacklist.
+	// Routing first filters by API key allowed groups, then by group's model policy.
+	GroupPolicies []GroupPolicy `json:"groupPolicies,omitempty"`
+
+	// ModelAliases maps client-facing model names to internal Kiro models.
+	// Applied before model routing; thinking suffix is preserved.
+	ModelAliases []ModelAlias `json:"modelAliases,omitempty"`
 	KiroVersion   string    `json:"kiroVersion,omitempty"`
 	SystemVersion string    `json:"systemVersion,omitempty"`
 	NodeVersion   string    `json:"nodeVersion,omitempty"`
@@ -383,6 +444,202 @@ func GetApiKey() string {
 	cfgLock.RLock()
 	defer cfgLock.RUnlock()
 	return cfg.ApiKey
+}
+
+// GetApiKeys returns a copy of all configured multi-key entries.
+func GetApiKeys() []ApiKeyEntry {
+	cfgLock.RLock()
+	defer cfgLock.RUnlock()
+	if cfg == nil {
+		return nil
+	}
+	out := make([]ApiKeyEntry, len(cfg.ApiKeys))
+	copy(out, cfg.ApiKeys)
+	return out
+}
+
+// UpdateApiKeys overwrites the multi-key table.
+func UpdateApiKeys(keys []ApiKeyEntry) error {
+	cfgLock.Lock()
+	defer cfgLock.Unlock()
+	cfg.ApiKeys = keys
+	return Save()
+}
+
+// UpdateApiKeyStats accumulates usage stats for a multi-key entry by ID.
+// Called from handler after each successful proxied request.
+func UpdateApiKeyStats(id string, requests, tokens int, credits float64, lastUsed int64) error {
+	if id == "" {
+		return nil
+	}
+	cfgLock.Lock()
+	defer cfgLock.Unlock()
+	for i := range cfg.ApiKeys {
+		if cfg.ApiKeys[i].ID == id {
+			cfg.ApiKeys[i].RequestCount += requests
+			cfg.ApiKeys[i].TotalTokens += tokens
+			cfg.ApiKeys[i].TotalCredits += credits
+			if lastUsed > cfg.ApiKeys[i].LastUsed {
+				cfg.ApiKeys[i].LastUsed = lastUsed
+			}
+			return Save()
+		}
+	}
+	return nil
+}
+
+// FindApiKeyEntry returns the matching enabled entry from the multi-key table.
+// Returns nil if no entry matches or the key is disabled.
+func FindApiKeyEntry(key string) *ApiKeyEntry {
+	if key == "" {
+		return nil
+	}
+	cfgLock.RLock()
+	defer cfgLock.RUnlock()
+	if cfg == nil {
+		return nil
+	}
+	for i := range cfg.ApiKeys {
+		e := &cfg.ApiKeys[i]
+		if e.Enabled && e.Key == key {
+			out := *e
+			return &out
+		}
+	}
+	return nil
+}
+
+// GetAccountGroups returns all unique non-empty group labels currently used by accounts.
+func GetAccountGroups() []string {
+	cfgLock.RLock()
+	defer cfgLock.RUnlock()
+	if cfg == nil {
+		return nil
+	}
+	seen := make(map[string]bool)
+	out := make([]string, 0)
+	for _, a := range cfg.Accounts {
+		g := a.Group
+		if g == "" || seen[g] {
+			continue
+		}
+		seen[g] = true
+		out = append(out, g)
+	}
+	return out
+}
+
+// GetGroupPolicies returns a copy of all configured group policies.
+func GetGroupPolicies() []GroupPolicy {
+	cfgLock.RLock()
+	defer cfgLock.RUnlock()
+	if cfg == nil {
+		return nil
+	}
+	out := make([]GroupPolicy, len(cfg.GroupPolicies))
+	copy(out, cfg.GroupPolicies)
+	return out
+}
+
+// UpdateGroupPolicies overwrites the group policy table.
+func UpdateGroupPolicies(policies []GroupPolicy) error {
+	cfgLock.Lock()
+	defer cfgLock.Unlock()
+	cfg.GroupPolicies = policies
+	return Save()
+}
+
+// GetGroupPolicy returns the policy bound to the named group (case-insensitive),
+// or nil if none. Empty / "default" name normalisation is up to the caller.
+func GetGroupPolicy(name string) *GroupPolicy {
+	if name == "" {
+		name = "default"
+	}
+	cfgLock.RLock()
+	defer cfgLock.RUnlock()
+	if cfg == nil {
+		return nil
+	}
+	for i := range cfg.GroupPolicies {
+		if strings.EqualFold(cfg.GroupPolicies[i].Name, name) {
+			out := cfg.GroupPolicies[i]
+			return &out
+		}
+	}
+	return nil
+}
+
+// GroupAllowsModel reports whether the named group's policy permits this model.
+// Empty group / "default" maps to the policy named "default" if any.
+// No policy = unrestricted. DenyModels checked first; AllowedModels empty = allow all.
+// Match is case-insensitive on the trimmed model id.
+func GroupAllowsModel(groupName, model string) bool {
+	policy := GetGroupPolicy(groupName)
+	if policy == nil {
+		return true
+	}
+	m := strings.ToLower(strings.TrimSpace(model))
+	for _, dm := range policy.DenyModels {
+		if strings.EqualFold(strings.TrimSpace(dm), m) {
+			return false
+		}
+	}
+	if len(policy.AllowedModels) == 0 {
+		return true
+	}
+	for _, am := range policy.AllowedModels {
+		if strings.EqualFold(strings.TrimSpace(am), m) {
+			return true
+		}
+	}
+	return false
+}
+
+// GetModelAliases returns a copy of all configured model aliases.
+func GetModelAliases() []ModelAlias {
+	cfgLock.RLock()
+	defer cfgLock.RUnlock()
+	if cfg == nil {
+		return nil
+	}
+	out := make([]ModelAlias, len(cfg.ModelAliases))
+	copy(out, cfg.ModelAliases)
+	return out
+}
+
+// UpdateModelAliases overwrites the model alias table.
+func UpdateModelAliases(aliases []ModelAlias) error {
+	cfgLock.Lock()
+	defer cfgLock.Unlock()
+	cfg.ModelAliases = aliases
+	return Save()
+}
+
+// ResolveModelAlias maps a client-facing model name to its internal target.
+// Returns the input unchanged when no enabled alias matches. Match is
+// case-insensitive on the trimmed `From` field.
+func ResolveModelAlias(model string) string {
+	cfgLock.RLock()
+	defer cfgLock.RUnlock()
+	if cfg == nil {
+		return model
+	}
+	m := strings.ToLower(strings.TrimSpace(model))
+	if m == "" {
+		return model
+	}
+	for _, a := range cfg.ModelAliases {
+		if !a.Enabled {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(a.From), m) {
+			to := strings.TrimSpace(a.To)
+			if to != "" {
+				return to
+			}
+		}
+	}
+	return model
 }
 
 func IsApiKeyRequired() bool {

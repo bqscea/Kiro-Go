@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -296,29 +297,92 @@ func (h *Handler) refreshAllAccounts() {
 	h.pool.Reload()
 }
 
-// validateApiKey 验证 API Key
+// extractProvidedKey 从请求头读取调用方提交的 API Key（Authorization Bearer 或 X-Api-Key）
+func extractProvidedKey(r *http.Request) string {
+	authHeader := r.Header.Get("Authorization")
+	apiKeyHeader := r.Header.Get("X-Api-Key")
+	if strings.HasPrefix(authHeader, "Bearer ") {
+		return strings.TrimPrefix(authHeader, "Bearer ")
+	}
+	return apiKeyHeader
+}
+
+// apiKeyCtxKey 用于在 request context 中存储命中的 ApiKeyEntry。
+type apiKeyCtxKey struct{}
+
+// matchedApiKeyEntry 从 context 中取出 handler 阶段命中的多 Key 表条目。
+// 旧版根 ApiKey 命中或未启用鉴权时返回 nil。
+func matchedApiKeyEntry(r *http.Request) *config.ApiKeyEntry {
+	if r == nil {
+		return nil
+	}
+	if v := r.Context().Value(apiKeyCtxKey{}); v != nil {
+		if e, ok := v.(*config.ApiKeyEntry); ok {
+			return e
+		}
+	}
+	return nil
+}
+
+// validateApiKey 验证 API Key（仅校验，不返回 group 限制）。
+// 命中多 Key 表时把 entry 写入 r.Context，便于下游做限流 / 统计。
 func (h *Handler) validateApiKey(r *http.Request) bool {
 	if !config.IsApiKeyRequired() {
 		return true
 	}
 
-	expectedKey := config.GetApiKey()
-	if expectedKey == "" {
+	provided := extractProvidedKey(r)
+
+	// 多 Key 表优先匹配
+	if entry := config.FindApiKeyEntry(provided); entry != nil {
+		ctx := context.WithValue(r.Context(), apiKeyCtxKey{}, entry)
+		*r = *r.WithContext(ctx)
 		return true
 	}
 
-	// 从 Authorization 头或 X-Api-Key 头获取
-	authHeader := r.Header.Get("Authorization")
-	apiKeyHeader := r.Header.Get("X-Api-Key")
-
-	var providedKey string
-	if strings.HasPrefix(authHeader, "Bearer ") {
-		providedKey = strings.TrimPrefix(authHeader, "Bearer ")
-	} else if apiKeyHeader != "" {
-		providedKey = apiKeyHeader
+	// 兼容旧版：根 ApiKey
+	expectedKey := config.GetApiKey()
+	if expectedKey == "" {
+		// 既无多 Key 表命中，也无根 Key 配置 → 视为未启用鉴权
+		if len(config.GetApiKeys()) == 0 {
+			return true
+		}
+		return false
 	}
+	return provided == expectedKey
+}
 
-	return providedKey == expectedKey
+// enforceRateLimit 在 ServeHTTP 路由分发时对命中多 Key 表的请求做 RPM/RPD 限流。
+// 返回 (允许, 拒绝原因)；旧版根 ApiKey / 未启用鉴权 一律放行。
+func (h *Handler) enforceRateLimit(r *http.Request) (bool, string) {
+	entry := matchedApiKeyEntry(r)
+	if entry == nil {
+		return true, ""
+	}
+	return getApiKeyLimiter().Allow(entry.ID, entry.RPM, entry.RPD)
+}
+
+// resolveAllowedGroups 返回当前请求允许使用的账号分组白名单。
+// 返回 nil 表示不限制（旧版 ApiKey 或未启用鉴权）。
+func (h *Handler) resolveAllowedGroups(r *http.Request) []string {
+	if !config.IsApiKeyRequired() {
+		return nil
+	}
+	provided := extractProvidedKey(r)
+	if entry := config.FindApiKeyEntry(provided); entry != nil {
+		// 空 groups 或包含 "*" → 不限制
+		if len(entry.Groups) == 0 {
+			return nil
+		}
+		for _, g := range entry.Groups {
+			if strings.TrimSpace(g) == "*" {
+				return nil
+			}
+		}
+		return entry.Groups
+	}
+	// 命中根 ApiKey → 不限制
+	return nil
 }
 
 // ServeHTTP 路由分发
@@ -347,16 +411,28 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.sendClaudeError(w, 401, "authentication_error", "Invalid or missing API key")
 			return
 		}
+		if ok, reason := h.enforceRateLimit(r); !ok {
+			h.sendClaudeError(w, 429, "rate_limit_error", reason)
+			return
+		}
 		h.handleClaudeMessages(w, r)
 	case path == "/v1/messages/count_tokens" || path == "/messages/count_tokens":
 		if !h.validateApiKey(r) {
 			h.sendClaudeError(w, 401, "authentication_error", "Invalid or missing API key")
 			return
 		}
+		if ok, reason := h.enforceRateLimit(r); !ok {
+			h.sendClaudeError(w, 429, "rate_limit_error", reason)
+			return
+		}
 		h.handleCountTokens(w, r)
 	case path == "/v1/chat/completions" || path == "/chat/completions":
 		if !h.validateApiKey(r) {
 			h.sendOpenAIError(w, 401, "authentication_error", "Invalid or missing API key")
+			return
+		}
+		if ok, reason := h.enforceRateLimit(r); !ok {
+			h.sendOpenAIError(w, 429, "rate_limit_exceeded", reason)
 			return
 		}
 		h.handleOpenAIChat(w, r)
@@ -448,12 +524,104 @@ func (h *Handler) handleModels(w http.ResponseWriter, r *http.Request) {
 		buildModelInfo("gpt-4", "kiro-proxy", true),
 	)
 
+	// 暴露用户配置的模型别名（owned_by=alias，避免与真实模型冲突）
+	for _, alias := range config.GetModelAliases() {
+		if !alias.Enabled || strings.TrimSpace(alias.From) == "" {
+			continue
+		}
+		models = append(models, buildModelInfo(alias.From, "alias", true))
+	}
+
+	// 按 API Key 允许的 group + group policy 缩水模型列表
+	if config.IsApiKeyRequired() {
+		// 即使无 entry（旧 ApiKey）也走一遍策略过滤，确保白名单一致
+		_ = h.validateApiKey(r)
+		allowedGroups := h.resolveAllowedGroups(r)
+		models = filterModelsByPolicies(models, allowedGroups, thinkingSuffix)
+	}
+
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"object": "list",
 		"data":   models,
 	})
 	return
+}
+
+// filterModelsByPolicies 把模型列表按「Key 允许的 group」覆盖到的所有 group policy 求并集后过滤。
+// allowedGroups nil/空 → 取全部已配置策略的并集 + 默认无策略组（不限）。
+func filterModelsByPolicies(models []map[string]interface{}, allowedGroups []string, thinkingSuffix string) []map[string]interface{} {
+	policies := config.GetGroupPolicies()
+	if len(policies) == 0 {
+		return models
+	}
+
+	// 收集要参考的 group 集合
+	wantGroups := make(map[string]bool)
+	if len(allowedGroups) == 0 {
+		for _, p := range policies {
+			wantGroups[strings.ToLower(p.Name)] = true
+		}
+		// 还要包含没策略覆盖的隐式分组——视为不限
+		// 这里通过「若未命中任何策略 → 默认放行」实现
+	} else {
+		for _, g := range allowedGroups {
+			gs := strings.TrimSpace(g)
+			if gs == "*" {
+				return models
+			}
+			if gs == "" {
+				gs = "default"
+			}
+			wantGroups[strings.ToLower(gs)] = true
+		}
+	}
+
+	// 命中的策略集合
+	matched := make([]config.GroupPolicy, 0, len(policies))
+	hasUnpolicied := false
+	if len(allowedGroups) == 0 {
+		matched = policies
+	} else {
+		for g := range wantGroups {
+			found := false
+			for _, p := range policies {
+				if strings.EqualFold(p.Name, g) {
+					matched = append(matched, p)
+					found = true
+					break
+				}
+			}
+			if !found {
+				// 该分组无策略 → 放行所有模型
+				hasUnpolicied = true
+			}
+		}
+	}
+	if hasUnpolicied {
+		return models
+	}
+	if len(matched) == 0 {
+		return models
+	}
+
+	out := make([]map[string]interface{}, 0, len(models))
+	for _, m := range models {
+		idRaw, _ := m["id"].(string)
+		base := strings.TrimSuffix(idRaw, thinkingSuffix)
+		// 策略并集：任一允许 → 保留
+		ok := false
+		for _, p := range matched {
+			if config.GroupAllowsModel(p.Name, base) {
+				ok = true
+				break
+			}
+		}
+		if ok {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 func buildAnthropicModelsResponse(cached []ModelInfo, thinkingSuffix string) []map[string]interface{} {
@@ -782,10 +950,18 @@ func (h *Handler) handleClaudeMessagesInternal(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	// 获取账号（按模型过滤，优先选支持该模型的账号）
+	// 模型别名映射（保留 thinking 后缀）
+	req.Model = applyModelAlias(req.Model)
+
+	// 获取账号（按模型过滤 + 按 API Key 允许的 group 过滤）
 	actualModel, _ := ParseModelAndThinking(req.Model, config.GetThinkingConfig().Suffix)
-	account := h.pool.GetNextForModel(actualModel)
+	allowedGroups := h.resolveAllowedGroups(r)
+	account := h.pool.GetNextForModelAndGroups(actualModel, allowedGroups)
 	if account == nil {
+		if len(allowedGroups) > 0 {
+			h.sendClaudeError(w, 503, "api_error", "No available accounts in allowed groups: "+strings.Join(allowedGroups, ","))
+			return
+		}
 		h.sendClaudeError(w, 503, "api_error", "No available accounts")
 		return
 	}
@@ -811,14 +987,14 @@ func (h *Handler) handleClaudeMessagesInternal(w http.ResponseWriter, r *http.Re
 
 	// Stream or non-stream
 	if req.Stream {
-		h.handleClaudeStream(w, account, kiroPayload, req.Model, thinking, thinkingResponseOpts, estimatedInputTokens, cacheUsage, cacheProfile)
+		h.handleClaudeStream(w, r, account, kiroPayload, req.Model, thinking, thinkingResponseOpts, estimatedInputTokens, cacheUsage, cacheProfile)
 	} else {
-		h.handleClaudeNonStream(w, account, kiroPayload, req.Model, thinking, thinkingResponseOpts, estimatedInputTokens, cacheUsage, cacheProfile)
+		h.handleClaudeNonStream(w, r, account, kiroPayload, req.Model, thinking, thinkingResponseOpts, estimatedInputTokens, cacheUsage, cacheProfile)
 	}
 }
 
 // handleClaudeStream Claude 流式响应
-func (h *Handler) handleClaudeStream(w http.ResponseWriter, account *config.Account, payload *KiroPayload, model string, thinking bool, thinkingOpts claudeThinkingResponseOptions, estimatedInputTokens int, cacheUsage promptCacheUsage, cacheProfile *promptCacheProfile) {
+func (h *Handler) handleClaudeStream(w http.ResponseWriter, r *http.Request, account *config.Account, payload *KiroPayload, model string, thinking bool, thinkingOpts claudeThinkingResponseOptions, estimatedInputTokens int, cacheUsage promptCacheUsage, cacheProfile *promptCacheProfile) {
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
@@ -1213,6 +1389,7 @@ func (h *Handler) handleClaudeStream(w http.ResponseWriter, account *config.Acco
 	h.recordSuccess(inputTokens, outputTokens, credits)
 	h.pool.RecordSuccess(account.ID)
 	h.pool.UpdateStats(account.ID, inputTokens+outputTokens, credits)
+	h.recordApiKeyUsage(r, inputTokens+outputTokens, credits)
 	h.promptCache.Update(account.ID, cacheProfile)
 
 	// 发送 message_delta
@@ -1281,6 +1458,16 @@ func (h *Handler) addCredits(credits float64) {
 	h.creditsMu.Unlock()
 }
 
+// recordApiKeyUsage 把请求统计累加到命中的多 Key 表条目（如有）。
+// 旧版根 ApiKey / 未启用鉴权的请求 entry 为 nil，不记账。
+func (h *Handler) recordApiKeyUsage(r *http.Request, tokens int, credits float64) {
+	entry := matchedApiKeyEntry(r)
+	if entry == nil {
+		return
+	}
+	go config.UpdateApiKeyStats(entry.ID, 1, tokens, credits, time.Now().Unix())
+}
+
 // 统计记录 (使用原子操作)
 func (h *Handler) recordSuccess(inputTokens, outputTokens int, credits float64) {
 	atomic.AddInt64(&h.totalRequests, 1)
@@ -1307,7 +1494,7 @@ func (h *Handler) checkOverageError(err error, accountID string) {
 }
 
 // handleClaudeNonStream Claude 非流式响应
-func (h *Handler) handleClaudeNonStream(w http.ResponseWriter, account *config.Account, payload *KiroPayload, model string, thinking bool, thinkingOpts claudeThinkingResponseOptions, estimatedInputTokens int, cacheUsage promptCacheUsage, cacheProfile *promptCacheProfile) {
+func (h *Handler) handleClaudeNonStream(w http.ResponseWriter, r *http.Request, account *config.Account, payload *KiroPayload, model string, thinking bool, thinkingOpts claudeThinkingResponseOptions, estimatedInputTokens int, cacheUsage promptCacheUsage, cacheProfile *promptCacheProfile) {
 	var content string
 	var thinkingContent string
 	var toolUses []KiroToolUse
@@ -1371,6 +1558,7 @@ func (h *Handler) handleClaudeNonStream(w http.ResponseWriter, account *config.A
 	h.recordSuccess(inputTokens, outputTokens, credits)
 	h.pool.RecordSuccess(account.ID)
 	h.pool.UpdateStats(account.ID, inputTokens+outputTokens, credits)
+	h.recordApiKeyUsage(r, inputTokens+outputTokens, credits)
 	h.promptCache.Update(account.ID, cacheProfile)
 
 	responseThinkingContent := rawThinkingContent
@@ -1440,9 +1628,17 @@ func (h *Handler) handleOpenAIChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 模型别名映射（保留 thinking 后缀）
+	req.Model = applyModelAlias(req.Model)
+
 	actualModel, _ := ParseModelAndThinking(req.Model, config.GetThinkingConfig().Suffix)
-	account := h.pool.GetNextForModel(actualModel)
+	allowedGroups := h.resolveAllowedGroups(r)
+	account := h.pool.GetNextForModelAndGroups(actualModel, allowedGroups)
 	if account == nil {
+		if len(allowedGroups) > 0 {
+			h.sendOpenAIError(w, 503, "server_error", "No available accounts in allowed groups: "+strings.Join(allowedGroups, ","))
+			return
+		}
 		h.sendOpenAIError(w, 503, "server_error", "No available accounts")
 		return
 	}
@@ -1461,14 +1657,14 @@ func (h *Handler) handleOpenAIChat(w http.ResponseWriter, r *http.Request) {
 	kiroPayload := OpenAIToKiro(&req, thinking)
 
 	if req.Stream {
-		h.handleOpenAIStream(w, account, kiroPayload, req.Model, thinking, estimatedInputTokens)
+		h.handleOpenAIStream(w, r, account, kiroPayload, req.Model, thinking, estimatedInputTokens)
 	} else {
-		h.handleOpenAINonStream(w, account, kiroPayload, req.Model, thinking, estimatedInputTokens)
+		h.handleOpenAINonStream(w, r, account, kiroPayload, req.Model, thinking, estimatedInputTokens)
 	}
 }
 
 // handleOpenAIStream OpenAI 流式响应
-func (h *Handler) handleOpenAIStream(w http.ResponseWriter, account *config.Account, payload *KiroPayload, model string, thinking bool, estimatedInputTokens int) {
+func (h *Handler) handleOpenAIStream(w http.ResponseWriter, r *http.Request, account *config.Account, payload *KiroPayload, model string, thinking bool, estimatedInputTokens int) {
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
@@ -1822,6 +2018,7 @@ func (h *Handler) handleOpenAIStream(w http.ResponseWriter, account *config.Acco
 	h.recordSuccess(inputTokens, outputTokens, credits)
 	h.pool.RecordSuccess(account.ID)
 	h.pool.UpdateStats(account.ID, inputTokens+outputTokens, credits)
+	h.recordApiKeyUsage(r, inputTokens+outputTokens, credits)
 
 	// 发送结束
 	finishReason := "stop"
@@ -1852,7 +2049,7 @@ func (h *Handler) handleOpenAIStream(w http.ResponseWriter, account *config.Acco
 }
 
 // handleOpenAINonStream OpenAI 非流式响应
-func (h *Handler) handleOpenAINonStream(w http.ResponseWriter, account *config.Account, payload *KiroPayload, model string, thinking bool, estimatedInputTokens int) {
+func (h *Handler) handleOpenAINonStream(w http.ResponseWriter, r *http.Request, account *config.Account, payload *KiroPayload, model string, thinking bool, estimatedInputTokens int) {
 	var content string
 	var reasoningContent string
 	var toolUses []KiroToolUse
@@ -1904,6 +2101,7 @@ func (h *Handler) handleOpenAINonStream(w http.ResponseWriter, account *config.A
 	h.recordSuccess(inputTokens, outputTokens, credits)
 	h.pool.RecordSuccess(account.ID)
 	h.pool.UpdateStats(account.ID, inputTokens+outputTokens, credits)
+	h.recordApiKeyUsage(r, inputTokens+outputTokens, credits)
 
 	thinkingFormat := config.GetThinkingConfig().OpenAIFormat
 	resp := KiroToOpenAIResponseWithReasoning(finalContent, reasoningContent, toolUses, inputTokens, outputTokens, model, thinkingFormat)
@@ -1967,7 +2165,14 @@ func (h *Handler) ensureValidToken(account *config.Account) error {
 
 // ==================== 管理 API ====================
 
+// handleAdminAPI 处理 admin API 请求
 func (h *Handler) handleAdminAPI(w http.ResponseWriter, r *http.Request) {
+	// SSE 端点：EventSource 不支持自定义 header，鉴权走 query string
+	if r.URL.Path == "/admin/api/events" && r.Method == "GET" {
+		h.apiEventsStream(w, r)
+		return
+	}
+
 	// 验证密码
 	password := r.Header.Get("X-Admin-Password")
 	if password == "" {
@@ -2063,6 +2268,20 @@ func (h *Handler) handleAdminAPI(w http.ResponseWriter, r *http.Request) {
 		h.apiGetVersion(w, r)
 	case path == "/export" && r.Method == "POST":
 		h.apiExportAccounts(w, r)
+	case path == "/apikeys" && r.Method == "GET":
+		h.apiGetApiKeys(w, r)
+	case path == "/apikeys" && r.Method == "POST":
+		h.apiUpdateApiKeys(w, r)
+	case path == "/groups" && r.Method == "GET":
+		h.apiGetGroups(w, r)
+	case path == "/group-policies" && r.Method == "GET":
+		h.apiGetGroupPolicies(w, r)
+	case path == "/group-policies" && r.Method == "POST":
+		h.apiUpdateGroupPolicies(w, r)
+	case path == "/model-aliases" && r.Method == "GET":
+		h.apiGetModelAliases(w, r)
+	case path == "/model-aliases" && r.Method == "POST":
+		h.apiUpdateModelAliases(w, r)
 	default:
 		w.WriteHeader(404)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Not Found"})
@@ -2104,6 +2323,7 @@ func (h *Handler) apiGetAccounts(w http.ResponseWriter, r *http.Request) {
 			"allowOverage":      a.AllowOverage,
 			"overageWeight":     a.OverageWeight,
 			"proxyURL":          a.ProxyURL,
+			"group":             a.Group,
 			"subscriptionType":  a.SubscriptionType,
 			"subscriptionTitle": a.SubscriptionTitle,
 			"daysRemaining":     a.DaysRemaining,
@@ -2216,6 +2436,9 @@ func (h *Handler) apiUpdateAccount(w http.ResponseWriter, r *http.Request, id st
 	if v, ok := updates["proxyURL"].(string); ok {
 		existing.ProxyURL = v
 	}
+	if v, ok := updates["group"].(string); ok {
+		existing.Group = strings.TrimSpace(v)
+	}
 
 	if err := config.UpdateAccount(id, *existing); err != nil {
 		w.WriteHeader(500)
@@ -2235,11 +2458,12 @@ func (h *Handler) apiUpdateAccount(w http.ResponseWriter, r *http.Request, id st
 	json.NewEncoder(w).Encode(map[string]bool{"success": true})
 }
 
-// apiBatchAccounts 批量操作账号（启用/禁用/刷新）
+// apiBatchAccounts 批量操作账号（启用/禁用/刷新/分组）
 func (h *Handler) apiBatchAccounts(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		IDs    []string `json:"ids"`
-		Action string   `json:"action"` // "enable", "disable", "refresh"
+		Action string   `json:"action"` // "enable", "disable", "refresh", "setGroup"
+		Group  string   `json:"group"`  // 仅 setGroup 使用，空 = 清空分组
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.WriteHeader(400)
@@ -2334,6 +2558,29 @@ func (h *Handler) apiBatchAccounts(w http.ResponseWriter, r *http.Request) {
 			"success":   true,
 			"refreshed": successCount,
 			"failed":    failCount,
+		})
+
+	case "setGroup":
+		group := strings.TrimSpace(req.Group)
+		accounts := config.GetAccounts()
+		idSet := make(map[string]bool)
+		for _, id := range req.IDs {
+			idSet[id] = true
+		}
+		count := 0
+		for _, a := range accounts {
+			if idSet[a.ID] {
+				a.Group = group
+				if err := config.UpdateAccount(a.ID, a); err == nil {
+					count++
+				}
+			}
+		}
+		h.pool.Reload()
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"count":   count,
+			"group":   group,
 		})
 
 	default:
@@ -2720,6 +2967,7 @@ func (h *Handler) apiGetStatus(w http.ResponseWriter, r *http.Request) {
 		"totalTokens":     h.totalTokens,
 		"totalCredits":    h.totalCredits,
 		"uptime":          time.Now().Unix() - h.startTime,
+		"groupBreakdown":  h.pool.GroupStats(),
 	})
 }
 
@@ -3053,6 +3301,7 @@ func (h *Handler) apiGetAccountFull(w http.ResponseWriter, r *http.Request, id s
 		"allowOverage":      account.AllowOverage,
 		"overageWeight":     account.OverageWeight,
 		"proxyURL":          account.ProxyURL,
+		"group":             account.Group,
 		"enabled":           account.Enabled,
 		"banStatus":         account.BanStatus,
 		"banReason":         account.BanReason,
@@ -3281,6 +3530,246 @@ func (h *Handler) apiGetVersion(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// apiGetApiKeys 获取多 Key 列表（脱敏）
+func (h *Handler) apiGetApiKeys(w http.ResponseWriter, r *http.Request) {
+	keys := config.GetApiKeys()
+	limiter := getApiKeyLimiter()
+	out := make([]map[string]interface{}, 0, len(keys))
+	for _, k := range keys {
+		usedMin, usedDay := limiter.Snapshot(k.ID)
+		out = append(out, map[string]interface{}{
+			"id":           k.ID,
+			"name":         k.Name,
+			"key":          k.Key,
+			"groups":       k.Groups,
+			"enabled":      k.Enabled,
+			"rpm":          k.RPM,
+			"rpd":          k.RPD,
+			"maxTokens":    k.MaxTokens,
+			"requestCount": k.RequestCount,
+			"totalTokens":  k.TotalTokens,
+			"totalCredits": k.TotalCredits,
+			"lastUsed":     k.LastUsed,
+			"usedMinute":   usedMin,
+			"usedDay":      usedDay,
+		})
+	}
+	json.NewEncoder(w).Encode(map[string]interface{}{"keys": out})
+}
+
+// apiUpdateApiKeys 全量替换多 Key 列表
+func (h *Handler) apiUpdateApiKeys(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Keys []config.ApiKeyEntry `json:"keys"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(400)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid JSON"})
+		return
+	}
+	// 取旧表用于保留 stats（前端只回写配置字段）
+	oldByKey := make(map[string]config.ApiKeyEntry)
+	oldByID := make(map[string]config.ApiKeyEntry)
+	for _, k := range config.GetApiKeys() {
+		if k.Key != "" {
+			oldByKey[k.Key] = k
+		}
+		if k.ID != "" {
+			oldByID[k.ID] = k
+		}
+	}
+	// 校验 + 清洗
+	cleaned := make([]config.ApiKeyEntry, 0, len(req.Keys))
+	seenKeys := make(map[string]bool)
+	for _, k := range req.Keys {
+		k.Key = strings.TrimSpace(k.Key)
+		k.Name = strings.TrimSpace(k.Name)
+		if k.Key == "" {
+			continue
+		}
+		if seenKeys[k.Key] {
+			w.WriteHeader(400)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Duplicate key: " + k.Key})
+			return
+		}
+		seenKeys[k.Key] = true
+		if k.ID == "" {
+			k.ID = auth.GenerateAccountID()
+		}
+		// 清理 groups
+		groups := make([]string, 0, len(k.Groups))
+		for _, g := range k.Groups {
+			gs := strings.TrimSpace(g)
+			if gs != "" {
+				groups = append(groups, gs)
+			}
+		}
+		k.Groups = groups
+		// 限流字段下限保护
+		if k.RPM < 0 {
+			k.RPM = 0
+		}
+		if k.RPD < 0 {
+			k.RPD = 0
+		}
+		if k.MaxTokens < 0 {
+			k.MaxTokens = 0
+		}
+		// 保留 stats（按 ID 优先，再按 Key 兜底）
+		if prev, ok := oldByID[k.ID]; ok {
+			k.RequestCount = prev.RequestCount
+			k.TotalTokens = prev.TotalTokens
+			k.TotalCredits = prev.TotalCredits
+			k.LastUsed = prev.LastUsed
+		} else if prev, ok := oldByKey[k.Key]; ok {
+			k.RequestCount = prev.RequestCount
+			k.TotalTokens = prev.TotalTokens
+			k.TotalCredits = prev.TotalCredits
+			k.LastUsed = prev.LastUsed
+		}
+		cleaned = append(cleaned, k)
+	}
+	if err := config.UpdateApiKeys(cleaned); err != nil {
+		w.WriteHeader(500)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+	json.NewEncoder(w).Encode(map[string]bool{"success": true})
+}
+
+// apiGetGroups 返回当前账号已用到的所有分组（用于 UI 下拉提示）
+func (h *Handler) apiGetGroups(w http.ResponseWriter, r *http.Request) {
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"groups": config.GetAccountGroups(),
+	})
+}
+
+// apiGetModelAliases 返回所有模型别名映射
+func (h *Handler) apiGetModelAliases(w http.ResponseWriter, r *http.Request) {
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"aliases": config.GetModelAliases(),
+	})
+}
+
+// apiUpdateModelAliases 全量替换模型别名映射表
+func (h *Handler) apiUpdateModelAliases(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Aliases []config.ModelAlias `json:"aliases"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(400)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid JSON"})
+		return
+	}
+	cleaned := make([]config.ModelAlias, 0, len(req.Aliases))
+	seen := make(map[string]bool)
+	for _, a := range req.Aliases {
+		from := strings.TrimSpace(a.From)
+		to := strings.TrimSpace(a.To)
+		if from == "" || to == "" {
+			continue
+		}
+		key := strings.ToLower(from)
+		if seen[key] {
+			w.WriteHeader(400)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Duplicate alias from: " + from})
+			return
+		}
+		seen[key] = true
+		cleaned = append(cleaned, config.ModelAlias{
+			From:    from,
+			To:      to,
+			Enabled: a.Enabled,
+			Note:    strings.TrimSpace(a.Note),
+		})
+	}
+	if err := config.UpdateModelAliases(cleaned); err != nil {
+		w.WriteHeader(500)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+	json.NewEncoder(w).Encode(map[string]bool{"success": true})
+}
+
+// applyModelAlias 在 ParseModelAndThinking 之前对模型名做别名解析。
+// 保留 thinking 后缀：alias 仅匹配去掉 thinking 后缀的部分。
+func applyModelAlias(model string) string {
+	suffix := config.GetThinkingConfig().Suffix
+	hasThinking := suffix != "" && strings.HasSuffix(strings.ToLower(model), strings.ToLower(suffix))
+	base := model
+	if hasThinking {
+		base = strings.TrimSuffix(model, suffix)
+		// 大小写兼容：如果上一步未剪裁（前缀大小写差异），再做一次显式剪裁
+		if base == model {
+			base = model[:len(model)-len(suffix)]
+		}
+	}
+	resolved := config.ResolveModelAlias(base)
+	if hasThinking {
+		return resolved + suffix
+	}
+	return resolved
+}
+func (h *Handler) apiGetGroupPolicies(w http.ResponseWriter, r *http.Request) {
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"policies": config.GetGroupPolicies(),
+	})
+}
+
+// apiUpdateGroupPolicies 全量替换分组模型策略表
+func (h *Handler) apiUpdateGroupPolicies(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Policies []config.GroupPolicy `json:"policies"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(400)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid JSON"})
+		return
+	}
+	cleaned := make([]config.GroupPolicy, 0, len(req.Policies))
+	seen := make(map[string]bool)
+	for _, p := range req.Policies {
+		name := strings.TrimSpace(p.Name)
+		if name == "" {
+			continue
+		}
+		key := strings.ToLower(name)
+		if seen[key] {
+			w.WriteHeader(400)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Duplicate group policy: " + name})
+			return
+		}
+		seen[key] = true
+		// 清洗 allowed / deny 列表
+		allowed := make([]string, 0, len(p.AllowedModels))
+		for _, m := range p.AllowedModels {
+			ms := strings.TrimSpace(m)
+			if ms != "" {
+				allowed = append(allowed, ms)
+			}
+		}
+		deny := make([]string, 0, len(p.DenyModels))
+		for _, m := range p.DenyModels {
+			ms := strings.TrimSpace(m)
+			if ms != "" {
+				deny = append(deny, ms)
+			}
+		}
+		cleaned = append(cleaned, config.GroupPolicy{
+			Name:          name,
+			AllowedModels: allowed,
+			DenyModels:    deny,
+			Description:   strings.TrimSpace(p.Description),
+		})
+	}
+	if err := config.UpdateGroupPolicies(cleaned); err != nil {
+		w.WriteHeader(500)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+	json.NewEncoder(w).Encode(map[string]bool{"success": true})
+}
+
 // apiExportAccounts 导出账号凭证
 func (h *Handler) apiExportAccounts(w http.ResponseWriter, r *http.Request) {
 	var req struct {
@@ -3440,4 +3929,64 @@ func clampInt(v, min, max int) int {
 		return max
 	}
 	return v
+}
+
+// apiEventsStream Server-Sent Events 端点：后端账号信息更新时主动推送给前端。
+// EventSource 不支持自定义 header，鉴权改走 query string ?password=xxx
+func (h *Handler) apiEventsStream(w http.ResponseWriter, r *http.Request) {
+	password := r.URL.Query().Get("password")
+	if password == "" {
+		if cookie, _ := r.Cookie("admin_password"); cookie != nil {
+			password = cookie.Value
+		}
+	}
+	if password != config.GetPassword() {
+		w.WriteHeader(401)
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no") // Nginx: 关闭代理缓冲
+
+	id, ch := getBroadcaster().Subscribe()
+	defer getBroadcaster().Unsubscribe(id)
+
+	// 立即发一个 hello，确认连接打开
+	fmt.Fprintf(w, "event: hello\ndata: {}\n\n")
+	flusher.Flush()
+
+	// 心跳，防止中间代理超时
+	heartbeat := time.NewTicker(25 * time.Second)
+	defer heartbeat.Stop()
+
+	ctx := r.Context()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-heartbeat.C:
+			// SSE 注释行作为心跳
+			if _, err := fmt.Fprintf(w, ": ping\n\n"); err != nil {
+				return
+			}
+			flusher.Flush()
+		case evt, ok := <-ch:
+			if !ok {
+				return
+			}
+			payload, _ := json.Marshal(evt)
+			if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", evt.Type, payload); err != nil {
+				return
+			}
+			flusher.Flush()
+		}
+	}
 }

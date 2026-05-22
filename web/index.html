@@ -943,6 +943,8 @@
                         <button class="btn btn-sm btn-secondary" onclick="batchAction('disable')" style="padding:3px 10px;font-size:12px" data-i18n="batch.disable"></button>
                         <button class="btn btn-sm btn-secondary" onclick="batchAction('refresh')" style="padding:3px 10px;font-size:12px" data-i18n="batch.refresh"></button>
                         <button class="btn btn-sm btn-secondary" onclick="batchRefreshModels()" style="padding:3px 10px;font-size:12px" data-i18n="batch.refreshModels"></button>
+                        <button class="btn btn-sm btn-secondary" onclick="batchSetGroup()" style="padding:3px 10px;font-size:12px;background:#0ea5e9;color:#fff" data-i18n="batch.setGroup"></button>
+                        <button class="btn btn-sm btn-secondary" onclick="batchClearGroup()" style="padding:3px 10px;font-size:12px" data-i18n="batch.clearGroup"></button>
                         <div style="height:16px;width:1px;background:#e2e8f0;flex-shrink:0"></div>
                     </div>
                     <div style="display:flex;gap:6px;align-items:center;margin-left:auto;flex-shrink:0">
@@ -953,8 +955,12 @@
                             <option value="disabled" data-i18n="filter.disabled"></option>
                             <option value="banned" data-i18n="filter.banned"></option>
                         </select>
+                        <select id="filterGroupSelect" onchange="onFilterChange()" style="padding:4px 6px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;background:#fff;cursor:pointer">
+                            <option value="all" data-i18n="filter.allGroups"></option>
+                        </select>
                     </div>
                 </div>
+                <div id="groupBoard" style="padding:0 20px 12px;display:none"></div>
                 <div id="accountsList"></div>
             </div>
         </div>
@@ -968,9 +974,33 @@
                         <span data-i18n="settings.enableApiKey"></span>
                     </label>
                 </div>
-                <div class="form-group"><label>API Key</label><div style="display:flex;gap:8px;align-items:stretch"><input type="text" id="apiKeyInput" style="flex:1"
-                        data-i18n-placeholder="settings.apiKeyPlaceholder"><button class="btn btn-sm btn-secondary" onclick="generateApiKey()" data-i18n="settings.generateApiKey"></button></div></div>
+                <div class="form-group"><label data-i18n="settings.legacyApiKey"></label><div style="display:flex;gap:8px;align-items:stretch"><input type="text" id="apiKeyInput" style="flex:1"
+                        data-i18n-placeholder="settings.apiKeyPlaceholder"><button class="btn btn-sm btn-secondary" onclick="generateApiKey()" data-i18n="settings.generateApiKey"></button></div><small style="color:#64748b;font-size:12px;margin-top:4px;display:block" data-i18n="settings.legacyApiKeyHint"></small></div>
+                <div class="form-group" style="margin-top:16px">
+                    <label style="display:flex;justify-content:space-between;align-items:center">
+                        <span data-i18n="settings.apiKeyTable"></span>
+                        <button class="btn btn-sm btn-secondary" onclick="addApiKeyRow()" data-i18n="settings.addApiKey"></button>
+                    </label>
+                    <small style="color:#64748b;font-size:12px;margin-top:4px;display:block" data-i18n="settings.apiKeyTableHint"></small>
+                    <div id="apiKeyTable" style="margin-top:8px"></div>
+                </div>
                 <button class="btn btn-primary" onclick="saveSettings()" data-i18n="common.save"></button>
+            </div>
+            <div class="card">
+                <div class="card-header"><span class="card-title" data-i18n="settings.modelAlias"></span>
+                    <button class="btn btn-sm btn-secondary" onclick="addModelAliasRow()" data-i18n="settings.addModelAlias" style="margin-left:auto"></button>
+                </div>
+                <small style="color:#64748b;font-size:12px;margin:0 0 8px 0;display:block;padding:0 4px" data-i18n="settings.modelAliasHint"></small>
+                <div id="modelAliasTable" style="margin-top:8px"></div>
+                <button class="btn btn-primary" onclick="saveModelAliases()" data-i18n="common.save" style="margin-top:8px"></button>
+            </div>
+            <div class="card">
+                <div class="card-header"><span class="card-title" data-i18n="settings.groupPolicy"></span>
+                    <button class="btn btn-sm btn-secondary" onclick="addGroupPolicyRow()" data-i18n="settings.addGroupPolicy" style="margin-left:auto"></button>
+                </div>
+                <small style="color:#64748b;font-size:12px;margin:0 0 8px 0;display:block;padding:0 4px" data-i18n="settings.groupPolicyHint"></small>
+                <div id="groupPolicyTable" style="margin-top:8px"></div>
+                <button class="btn btn-primary" onclick="saveGroupPolicies()" data-i18n="common.save" style="margin-top:8px"></button>
             </div>
             <div class="card">
                 <div class="card-header"><span class="card-title" data-i18n="settings.usageSettings"></span></div>
@@ -1215,6 +1245,44 @@
                 'settings.enableApiKey': '启用 API Key 验证',
                 'settings.apiKeyPlaceholder': '留空则不验证',
                 'settings.generateApiKey': '随机生成',
+                'settings.legacyApiKey': '默认 API Key（兼容旧版）',
+                'settings.legacyApiKeyHint': '使用此 Key 时不限分组，访问全部账号。建议改用下方多 Key 表。',
+                'settings.apiKeyTable': '多 API Key（按分组路由）',
+                'settings.apiKeyTableHint': '每行一个 Key，可绑定一个或多个账号分组。请求带此 Key 时仅命中所选分组的账号。分组留空 / 选 * 表示不限。',
+                'settings.addApiKey': '+ 新增 Key',
+                'settings.apiKeyName': '名称',
+                'settings.apiKeyValue': 'Key',
+                'settings.apiKeyGroups': '可用分组',
+                'settings.apiKeyEnabled': '启用',
+                'settings.apiKeyAll': '全部分组 (*)',
+                'settings.apiKeyDelete': '删除',
+                'settings.apiKeySaved': 'API Key 设置已保存',
+                'settings.apiKeyDuplicate': '存在重复的 Key',
+                'settings.apiKeyRPM': 'RPM',
+                'settings.apiKeyRPD': 'RPD',
+                'settings.apiKeyMaxTokens': '单请求 Token 上限',
+                'settings.apiKeyUsage': '已用',
+                'settings.apiKeyUsageTip': '本分钟 / 本日 已用次数 · 累计请求 / Token / Credits',
+                'groupBoard.tip': '点击筛选此分组',
+                'groupBoard.line': '可用 {0}/{1} · 冷却 {2} · 禁用 {3}',
+                'groupBoard.editPolicy': '编辑白名单',
+                'settings.groupPolicy': '分组绑定模型',
+                'settings.groupPolicyHint': '为分组绑定可用模型白名单 / 黑名单。例：pro 可用 claude-opus-4-7，free 仅 claude-sonnet-4.5。多个模型用英文逗号分隔，留空 = 不限制。黑名单优先生效。',
+                'settings.addGroupPolicy': '+ 新增分组策略',
+                'settings.groupPolicyName': '分组',
+                'settings.groupPolicyAllowed': '允许模型（白名单）',
+                'settings.groupPolicyDeny': '禁止模型（黑名单）',
+                'settings.groupPolicyDelete': '删除',
+                'settings.groupPolicySaved': '分组策略已保存',
+                'settings.groupPolicyAllowedPlaceholder': '留空=不限。逗号分隔，如 claude-opus-4-7, claude-sonnet-4-6',
+                'settings.groupPolicyDenyPlaceholder': '逗号分隔，黑名单优先',
+                'settings.modelAlias': '模型别名映射',
+                'settings.modelAliasHint': '客户端请求 From 模型 → 内部转换为 To 模型。Thinking 后缀自动保留。例：gpt-4o → claude-sonnet-4-6。',
+                'settings.addModelAlias': '+ 新增别名',
+                'settings.modelAliasFrom': '客户端模型 (From)',
+                'settings.modelAliasTo': '内部模型 (To)',
+                'settings.modelAliasNote': '备注',
+                'settings.modelAliasSaved': '模型别名已保存',
                 'settings.usageSettings': '用量控制',
                 'settings.allowOverUsage': '允许超额使用',
                 'settings.allowOverUsageHint': '开启后，即使账号额度用尽也会继续使用该账号处理请求，不再因余额不足而报错',
@@ -1405,6 +1473,12 @@
                 'batch.disable': '批量禁用',
                 'batch.refresh': '批量刷新',
                 'batch.refreshModels': '批量刷新模型',
+                'batch.setGroup': '加入分组',
+                'batch.clearGroup': '移除分组',
+                'batch.setGroupPrompt': '为已选 {0} 个账号设置分组（已有：{1}）：\n留空 = 移除分组',
+                'batch.confirmClearGroup': '确定移除已选 {0} 个账号的分组？',
+                'batch.setGroupResult': '已为 {0} 个账号设置分组「{1}」',
+                'batch.clearGroupResult': '已清除 {0} 个账号的分组',
                 'batch.selected': '已选 {0} 个',
                 'batch.selectAll': '全选',
                 'batch.confirmEnable': '确定批量启用 {0} 个账号？',
@@ -1428,6 +1502,11 @@
                 'detail.proxyURL': '独立代理',
                 'detail.proxyHint': '留空则使用全局代理，格式: socks5://host:port 或 http://host:port',
                 'detail.proxySaved': '代理已保存',
+                'detail.group': '所属分组',
+                'detail.groupHint': '用于多 API Key 路由。留空则归入 "default" 隐式分组。',
+                'detail.groupPlaceholder': '例如：team-a / vip',
+                'accounts.group': '分组',
+                'filter.allGroups': '全部分组',
                 'accounts.test': '测试',
                 'accounts.testing': '测试中...',
                 'accounts.testSuccess': '测试成功',
@@ -1500,6 +1579,44 @@
                 'settings.enableApiKey': 'Enable API Key Verification',
                 'settings.apiKeyPlaceholder': 'Leave empty to disable',
                 'settings.generateApiKey': 'Generate',
+                'settings.legacyApiKey': 'Default API Key (legacy)',
+                'settings.legacyApiKeyHint': 'When this key is used the request can hit any group. Prefer the multi-key table below.',
+                'settings.apiKeyTable': 'Multi API Keys (per-group routing)',
+                'settings.apiKeyTableHint': 'One key per row, bound to one or more account groups. Requests with the key only reach matching groups. Empty / * means any group.',
+                'settings.addApiKey': '+ Add Key',
+                'settings.apiKeyName': 'Name',
+                'settings.apiKeyValue': 'Key',
+                'settings.apiKeyGroups': 'Allowed Groups',
+                'settings.apiKeyEnabled': 'Enabled',
+                'settings.apiKeyAll': 'All groups (*)',
+                'settings.apiKeyDelete': 'Delete',
+                'settings.apiKeySaved': 'API key settings saved',
+                'settings.apiKeyDuplicate': 'Duplicate key value',
+                'settings.apiKeyRPM': 'RPM',
+                'settings.apiKeyRPD': 'RPD',
+                'settings.apiKeyMaxTokens': 'Max tokens / req',
+                'settings.apiKeyUsage': 'Used',
+                'settings.apiKeyUsageTip': 'This minute / today · cumulative req / tokens / credits',
+                'groupBoard.tip': 'Click to filter this group',
+                'groupBoard.line': 'avail {0}/{1} · cooldown {2} · disabled {3}',
+                'groupBoard.editPolicy': 'Edit Whitelist',
+                'settings.groupPolicy': 'Group → Model Whitelist',
+                'settings.groupPolicyHint': 'Bind a group to allowed/denied models. e.g. pro → claude-opus-4-7, free → claude-sonnet-4.5. Comma separated; empty = unrestricted; deny list takes precedence.',
+                'settings.addGroupPolicy': '+ Add Policy',
+                'settings.groupPolicyName': 'Group',
+                'settings.groupPolicyAllowed': 'Allowed (whitelist)',
+                'settings.groupPolicyDeny': 'Denied (blacklist)',
+                'settings.groupPolicyDelete': 'Delete',
+                'settings.groupPolicySaved': 'Group policies saved',
+                'settings.groupPolicyAllowedPlaceholder': 'empty = any. comma separated, e.g. claude-opus-4-7, claude-sonnet-4-6',
+                'settings.groupPolicyDenyPlaceholder': 'comma separated; deny list takes precedence',
+                'settings.modelAlias': 'Model Alias Mapping',
+                'settings.modelAliasHint': 'Client-facing From → internal To. Thinking suffix preserved automatically. e.g. gpt-4o → claude-sonnet-4-6.',
+                'settings.addModelAlias': '+ Add Alias',
+                'settings.modelAliasFrom': 'Client Model (From)',
+                'settings.modelAliasTo': 'Internal Model (To)',
+                'settings.modelAliasNote': 'Note',
+                'settings.modelAliasSaved': 'Model aliases saved',
                 'settings.usageSettings': 'Usage Control',
                 'settings.allowOverUsage': 'Allow Over-Usage',
                 'settings.allowOverUsageHint': 'When enabled, accounts will continue to serve requests even after their quota is exhausted',
@@ -1686,6 +1803,12 @@
                 'batch.disable': 'Batch Disable',
                 'batch.refresh': 'Batch Refresh',
                 'batch.refreshModels': 'Batch Refresh Models',
+                'batch.setGroup': 'Set Group',
+                'batch.clearGroup': 'Clear Group',
+                'batch.setGroupPrompt': 'Set group for {0} selected accounts (existing: {1}):\nEmpty = clear group',
+                'batch.confirmClearGroup': 'Clear group on {0} selected accounts?',
+                'batch.setGroupResult': 'Set group "{1}" on {0} accounts',
+                'batch.clearGroupResult': 'Cleared group on {0} accounts',
                 'batch.selected': '{0} selected',
                 'batch.selectAll': 'Select All',
                 'batch.confirmEnable': 'Enable {0} accounts?',
@@ -1709,6 +1832,11 @@
                 'detail.proxyURL': 'Account Proxy',
                 'detail.proxyHint': 'Leave empty to use global proxy. Format: socks5://host:port or http://host:port',
                 'detail.proxySaved': 'Proxy saved',
+                'detail.group': 'Group',
+                'detail.groupHint': 'Used by multi-API-key routing. Empty means the implicit "default" group.',
+                'detail.groupPlaceholder': 'e.g. team-a / vip',
+                'accounts.group': 'Group',
+                'filter.allGroups': 'All groups',
                 'accounts.test': 'Test',
                 'accounts.testing': 'Testing...',
                 'accounts.testSuccess': 'Test OK',
@@ -1767,8 +1895,8 @@
         const baseUrl = location.origin;
         let accountsData = [];
         let selectedAccounts = new Set();
-        let filterKeyword = '';
-        let filterStatus = 'all';
+        let filterKeyword = (function () { try { return localStorage.getItem('filterKeyword') || ''; } catch (e) { return ''; } })();
+        let filterStatus = (function () { try { return localStorage.getItem('filterStatus') || 'all'; } catch (e) { return 'all'; } })();
 
         // 隐私模式状态管理
         let privacyModeEnabled = true;
@@ -1883,6 +2011,13 @@
         function showMain() {
             document.getElementById('loginPage').classList.add('hidden');
             document.getElementById('mainPage').classList.remove('hidden');
+            // 回填筛选状态到 DOM，避免刷新后下拉框与内存状态不一致
+            try {
+                const searchEl = document.getElementById('filterSearch');
+                if (searchEl) searchEl.value = filterKeyword || '';
+                const statusEl = document.getElementById('filterStatusSelect');
+                if (statusEl) statusEl.value = filterStatus || 'all';
+            } catch (e) { }
         }
         async function loadData() {
             await Promise.all([loadStats(), loadAccounts(), loadSettings(), loadVersion()]);
@@ -1902,21 +2037,79 @@
             document.getElementById('statFailed').textContent = d.failedRequests || 0;
             document.getElementById('statTokens').textContent = formatNum(d.totalTokens || 0);
             document.getElementById('statCredits').textContent = (d.totalCredits || 0).toFixed(1);
+            renderGroupBoard(d.groupBreakdown || []);
+        }
+        function renderGroupBoard(groups) {
+            const board = document.getElementById('groupBoard');
+            if (!board) return;
+            if (!groups || groups.length === 0) {
+                board.style.display = 'none';
+                board.innerHTML = '';
+                return;
+            }
+            board.style.display = 'flex';
+            board.style.flexWrap = 'wrap';
+            board.style.gap = '8px';
+            board.innerHTML = groups.map(g => {
+                const pct = g.total > 0 ? Math.round(g.available * 100 / g.total) : 0;
+                const color = g.available === 0 ? '#ef4444' : (pct < 50 ? '#f59e0b' : '#10b981');
+                return '<div onclick="quickFilterGroup(\'' + escapeAttr(g.group) + '\')" style="cursor:pointer;border:1px solid #e2e8f0;border-radius:8px;padding:6px 10px;background:#fff;min-width:130px;display:flex;flex-direction:column;gap:2px" title="' + t('groupBoard.tip') + '">' +
+                    '<div style="display:flex;justify-content:space-between;align-items:center;gap:6px">' +
+                    '<div style="font-weight:600;font-size:13px;color:#0f172a">' + g.group + '</div>' +
+                    '<button onclick="event.stopPropagation();editGroupPolicy(\'' + escapeAttr(g.group) + '\')" class="btn btn-sm btn-secondary" style="padding:1px 6px;font-size:10px;border-radius:4px" title="' + t('groupBoard.editPolicy') + '">⚙</button>' +
+                    '</div>' +
+                    '<div style="font-size:11px;color:#64748b">' + t('groupBoard.line', g.available, g.total, g.cooldown || 0, g.disabled || 0) + '</div>' +
+                    '<div style="height:3px;background:#f1f5f9;border-radius:2px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:' + color + '"></div></div>' +
+                    '</div>';
+            }).join('');
+        }
+        function quickFilterGroup(group) {
+            const sel = document.getElementById('filterGroupSelect');
+            if (!sel) return;
+            const target = group === 'default' ? '__default__' : group;
+            for (const opt of sel.options) {
+                if (opt.value === target) { sel.value = target; break; }
+            }
+            onFilterChange();
         }
         async function loadAccounts() {
             const res = await fetch('/admin/api/accounts', { headers: { 'X-Admin-Password': password } });
             accountsData = await res.json();
+            const groups = Array.from(new Set((accountsData || []).map(a => a.group).filter(g => g && g !== ''))).sort();
+            window.allGroups = groups;
+            const sel = document.getElementById('filterGroupSelect');
+            if (sel) {
+                const cur = sel.value || 'all';
+                sel.innerHTML = '<option value="all">' + t('filter.allGroups') + '</option>' +
+                    '<option value="__default__">default</option>' +
+                    groups.map(g => '<option value="' + g + '"' + (cur === g ? ' selected' : '') + '>' + g + '</option>').join('');
+                if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
+            }
             renderAccounts();
         }
+        async function refreshGroupOptions() {
+            try {
+                const res = await fetch('/admin/api/groups', { headers: { 'X-Admin-Password': password } });
+                const d = await res.json();
+                window.allGroups = d.groups || [];
+            } catch (e) { /* silent */ }
+        }
         function getFilteredAccounts() {
+            const filterGroup = (document.getElementById('filterGroupSelect') || {}).value || 'all';
             return accountsData.filter(a => {
                 if (filterStatus === 'enabled' && !a.enabled) return false;
                 if (filterStatus === 'disabled' && (a.enabled || (a.banStatus && a.banStatus !== 'ACTIVE'))) return false;
                 if (filterStatus === 'banned' && (!a.banStatus || a.banStatus === 'ACTIVE')) return false;
+                if (filterGroup === '__default__') {
+                    if (a.group && a.group !== '') return false;
+                } else if (filterGroup !== 'all') {
+                    if ((a.group || '') !== filterGroup) return false;
+                }
                 if (filterKeyword) {
                     const kw = filterKeyword.toLowerCase();
                     const email = (a.email || '').toLowerCase();
-                    if (!email.includes(kw)) return false;
+                    const grp = (a.group || '').toLowerCase();
+                    if (!email.includes(kw) && !grp.includes(kw)) return false;
                 }
                 return true;
             });
@@ -1924,6 +2117,10 @@
         function onFilterChange() {
             filterKeyword = document.getElementById('filterSearch').value;
             filterStatus = document.getElementById('filterStatusSelect').value;
+            try {
+                localStorage.setItem('filterKeyword', filterKeyword);
+                localStorage.setItem('filterStatus', filterStatus);
+            } catch (e) { }
             renderAccounts();
         }
         function toggleSelectAll(checked) {
@@ -1978,6 +2175,61 @@
                 updateBatchBar();
                 loadAccounts();
                 loadStats();
+            } catch (e) {
+                alert(t('common.failed'));
+            }
+        }
+        async function batchSetGroup() {
+            const ids = Array.from(selectedAccounts);
+            if (ids.length === 0) return;
+            const existing = (window.allGroups || []).join(', ') || '—';
+            const group = prompt(t('batch.setGroupPrompt', ids.length, existing), '');
+            if (group === null) return; // cancelled
+            const trimmed = (group || '').trim();
+            try {
+                const res = await fetch('/admin/api/accounts/batch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-Admin-Password': password },
+                    body: JSON.stringify({ ids, action: 'setGroup', group: trimmed })
+                });
+                const d = await res.json();
+                if (d.success) {
+                    if (trimmed === '') {
+                        alert(t('batch.clearGroupResult', d.count || ids.length));
+                    } else {
+                        alert(t('batch.setGroupResult', d.count || ids.length, trimmed));
+                    }
+                } else {
+                    alert(t('common.failed') + ': ' + (d.error || ''));
+                }
+                selectedAccounts.clear();
+                updateBatchBar();
+                loadAccounts();
+                refreshGroupOptions();
+            } catch (e) {
+                alert(t('common.failed'));
+            }
+        }
+        async function batchClearGroup() {
+            const ids = Array.from(selectedAccounts);
+            if (ids.length === 0) return;
+            if (!confirm(t('batch.confirmClearGroup', ids.length))) return;
+            try {
+                const res = await fetch('/admin/api/accounts/batch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-Admin-Password': password },
+                    body: JSON.stringify({ ids, action: 'setGroup', group: '' })
+                });
+                const d = await res.json();
+                if (d.success) {
+                    alert(t('batch.clearGroupResult', d.count || ids.length));
+                } else {
+                    alert(t('common.failed') + ': ' + (d.error || ''));
+                }
+                selectedAccounts.clear();
+                updateBatchBar();
+                loadAccounts();
+                refreshGroupOptions();
             } catch (e) {
                 alert(t('common.failed'));
             }
@@ -2056,6 +2308,7 @@
                     getTrialBadge(a) +
                     weightBadge +
                     overageBadge +
+                    (a.group ? '<span class="badge" style="background:#0ea5e9;color:#fff">' + t('accounts.group') + ':' + a.group + '</span>' : '') +
                     '<span class="badge badge-info">' + formatAuthMethod(a.provider || a.authMethod) + '</span>' +
                     getStatusBadge(a) +
                     '</div>' +
@@ -2206,6 +2459,11 @@
                 '</div>' +
                 '<button class="btn btn-sm btn-primary" onclick="saveOverageSettings(\'' + id + '\')">' + t('detail.save') + '</button>' +
                 '</div>' +
+                '<div class="detail-section"><h4>' + t('detail.group') + '</h4><div class="machine-id-row">' +
+                '<input type="text" id="groupInput" value="' + (a.group || '') + '" data-i18n-placeholder="detail.groupPlaceholder" placeholder="' + t('detail.groupPlaceholder') + '" style="flex:1" list="groupSuggest">' +
+                '<datalist id="groupSuggest">' + (window.allGroups || []).map(g => '<option value="' + g + '"></option>').join('') + '</datalist>' +
+                '<button class="btn btn-sm btn-primary" onclick="saveGroup(\'' + id + '\')">' + t('detail.save') + '</button>' +
+                '</div><p style="color:#64748b;font-size:12px;margin-top:4px">' + t('detail.groupHint') + '</p></div>' +
                 '<div class="detail-section"><h4>' + t('detail.proxyURL') + '</h4><div class="machine-id-row">' +
                 '<input type="text" id="proxyURLInput" value="' + (a.proxyURL || '') + '" placeholder="socks5://host:port" style="flex:1">' +
                 '<button class="btn btn-sm btn-primary" onclick="saveProxyURL(\'' + id + '\')">' + t('detail.save') + '</button>' +
@@ -2314,6 +2572,17 @@
                 });
                 const d = await res.json();
                 if (d.success) { alert(t('detail.proxySaved')); loadAccounts(); } else { alert(t('detail.saveFailed') + ': ' + d.error); }
+            } catch (e) { alert(t('detail.saveFailed')); }
+        }
+        async function saveGroup(id) {
+            const group = document.getElementById('groupInput').value.trim();
+            try {
+                const res = await fetch('/admin/api/accounts/' + id, {
+                    method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Admin-Password': password },
+                    body: JSON.stringify({ group })
+                });
+                const d = await res.json();
+                if (d.success) { alert(t('detail.saved')); loadAccounts(); refreshGroupOptions(); } else { alert(t('detail.saveFailed') + ': ' + d.error); }
             } catch (e) { alert(t('detail.saveFailed')); }
         }
         // 测试日志
@@ -2474,10 +2743,265 @@
             document.getElementById('requireApiKey').checked = d.requireApiKey;
             document.getElementById('apiKeyInput').value = d.apiKey || '';
             document.getElementById('allowOverUsage').checked = d.allowOverUsage || false;
+            await loadApiKeys();
+            await loadGroupPolicies();
+            await loadModelAliases();
             loadThinkingConfig();
             loadEndpointConfig();
             loadProxyConfig();
             loadPromptFilter();
+        }
+        let groupPoliciesData = [];
+        async function loadGroupPolicies() {
+            try {
+                const res = await fetch('/admin/api/group-policies', { headers: { 'X-Admin-Password': password } });
+                const d = await res.json();
+                groupPoliciesData = (d.policies || []).map(p => ({
+                    name: p.name || '',
+                    allowedModels: p.allowedModels || [],
+                    denyModels: p.denyModels || [],
+                    description: p.description || '',
+                }));
+            } catch (e) {
+                groupPoliciesData = [];
+            }
+            await refreshGroupOptions();
+            renderGroupPolicies();
+        }
+        function renderGroupPolicies() {
+            const container = document.getElementById('groupPolicyTable');
+            if (!container) return;
+            const groupOptions = (window.allGroups || []);
+            if (groupPoliciesData.length === 0) {
+                container.innerHTML = '<p style="color:#94a3b8;font-size:12px;padding:8px 0">—</p>';
+                return;
+            }
+            const header = '<div style="display:grid;grid-template-columns:140px 1fr 1fr 36px;gap:6px;padding:0 6px 4px;font-size:11px;color:#64748b;font-weight:600">' +
+                '<div>' + t('settings.groupPolicyName') + '</div>' +
+                '<div>' + t('settings.groupPolicyAllowed') + '</div>' +
+                '<div>' + t('settings.groupPolicyDeny') + '</div>' +
+                '<div></div>' +
+                '</div>';
+            container.innerHTML = header + groupPoliciesData.map((p, i) => {
+                const allowed = (p.allowedModels || []).join(', ');
+                const deny = (p.denyModels || []).join(', ');
+                return '<div style="display:grid;grid-template-columns:140px 1fr 1fr 36px;gap:6px;align-items:center;padding:6px;border:1px solid #e2e8f0;border-radius:6px;margin-bottom:6px;background:#f8fafc">' +
+                    '<input type="text" value="' + escapeAttr(p.name) + '" oninput="updateGroupPolicyField(' + i + ',\'name\',this.value)" list="groupSuggestPolicy" placeholder="default / pro / free" style="padding:4px 6px;font-size:12px;border:1px solid #e2e8f0;border-radius:4px">' +
+                    '<input type="text" value="' + escapeAttr(allowed) + '" oninput="updateGroupPolicyField(' + i + ',\'allowedText\',this.value)" placeholder="' + t('settings.groupPolicyAllowedPlaceholder') + '" style="padding:4px 6px;font-size:12px;border:1px solid #e2e8f0;border-radius:4px;font-family:monospace">' +
+                    '<input type="text" value="' + escapeAttr(deny) + '" oninput="updateGroupPolicyField(' + i + ',\'denyText\',this.value)" placeholder="' + t('settings.groupPolicyDenyPlaceholder') + '" style="padding:4px 6px;font-size:12px;border:1px solid #e2e8f0;border-radius:4px;font-family:monospace">' +
+                    '<button class="btn btn-sm btn-danger" onclick="removeGroupPolicyRow(' + i + ')" style="padding:3px 6px;font-size:11px">×</button>' +
+                    '</div>';
+            }).join('') +
+                '<datalist id="groupSuggestPolicy"><option value="default"></option>' + groupOptions.map(g => '<option value="' + g + '"></option>').join('') + '</datalist>';
+        }
+        function addGroupPolicyRow() {
+            groupPoliciesData.push({ name: '', allowedModels: [], denyModels: [], description: '' });
+            renderGroupPolicies();
+        }
+        function removeGroupPolicyRow(i) {
+            groupPoliciesData.splice(i, 1);
+            renderGroupPolicies();
+        }
+        function updateGroupPolicyField(i, field, value) {
+            if (!groupPoliciesData[i]) return;
+            if (field === 'allowedText') {
+                groupPoliciesData[i].allowedModels = String(value || '').split(',').map(s => s.trim()).filter(Boolean);
+            } else if (field === 'denyText') {
+                groupPoliciesData[i].denyModels = String(value || '').split(',').map(s => s.trim()).filter(Boolean);
+            } else {
+                groupPoliciesData[i][field] = value;
+            }
+        }
+        async function saveGroupPolicies() {
+            const seen = {};
+            const cleaned = [];
+            for (const p of groupPoliciesData || []) {
+                const name = (p.name || '').trim();
+                if (!name) continue;
+                const key = name.toLowerCase();
+                if (seen[key]) { alert(t('common.failed') + ': duplicate group ' + name); return; }
+                seen[key] = true;
+                cleaned.push({
+                    name,
+                    allowedModels: p.allowedModels || [],
+                    denyModels: p.denyModels || [],
+                    description: p.description || '',
+                });
+            }
+            const r = await fetch('/admin/api/group-policies', {
+                method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Admin-Password': password },
+                body: JSON.stringify({ policies: cleaned })
+            });
+            const d = await r.json();
+            if (!r.ok || d.error) { alert(t('common.failed') + ': ' + (d.error || '')); return; }
+            alert(t('settings.groupPolicySaved'));
+            await loadGroupPolicies();
+        }
+        function editGroupPolicy(group) {
+            switchTab('settings');
+            // 滚动到分组策略卡
+            setTimeout(() => {
+                const el = document.getElementById('groupPolicyTable');
+                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                // 若该 group 无策略，添加一行
+                const target = group === 'default' ? 'default' : group;
+                if (!groupPoliciesData.some(p => (p.name || '').toLowerCase() === target.toLowerCase())) {
+                    groupPoliciesData.push({ name: target, allowedModels: [], denyModels: [], description: '' });
+                    renderGroupPolicies();
+                }
+            }, 100);
+        }
+        let modelAliasesData = [];
+        async function loadModelAliases() {
+            try {
+                const res = await fetch('/admin/api/model-aliases', { headers: { 'X-Admin-Password': password } });
+                const d = await res.json();
+                modelAliasesData = (d.aliases || []).map(a => ({
+                    from: a.from || '', to: a.to || '', enabled: a.enabled !== false, note: a.note || '',
+                }));
+            } catch (e) {
+                modelAliasesData = [];
+            }
+            renderModelAliases();
+        }
+        function renderModelAliases() {
+            const container = document.getElementById('modelAliasTable');
+            if (!container) return;
+            if (modelAliasesData.length === 0) {
+                container.innerHTML = '<p style="color:#94a3b8;font-size:12px;padding:8px 0">—</p>';
+                return;
+            }
+            const header = '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 60px 36px;gap:6px;padding:0 6px 4px;font-size:11px;color:#64748b;font-weight:600">' +
+                '<div>' + t('settings.modelAliasFrom') + '</div>' +
+                '<div>' + t('settings.modelAliasTo') + '</div>' +
+                '<div>' + t('settings.modelAliasNote') + '</div>' +
+                '<div>' + t('settings.apiKeyEnabled') + '</div>' +
+                '<div></div>' +
+                '</div>';
+            container.innerHTML = header + modelAliasesData.map((a, i) =>
+                '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 60px 36px;gap:6px;align-items:center;padding:6px;border:1px solid #e2e8f0;border-radius:6px;margin-bottom:6px;background:#f8fafc">' +
+                '<input type="text" value="' + escapeAttr(a.from) + '" oninput="updateModelAliasField(' + i + ',\'from\',this.value)" placeholder="gpt-4o" style="padding:4px 6px;font-size:12px;border:1px solid #e2e8f0;border-radius:4px;font-family:monospace">' +
+                '<input type="text" value="' + escapeAttr(a.to) + '" oninput="updateModelAliasField(' + i + ',\'to\',this.value)" placeholder="claude-sonnet-4-6" style="padding:4px 6px;font-size:12px;border:1px solid #e2e8f0;border-radius:4px;font-family:monospace">' +
+                '<input type="text" value="' + escapeAttr(a.note) + '" oninput="updateModelAliasField(' + i + ',\'note\',this.value)" placeholder="' + t('settings.modelAliasNote') + '" style="padding:4px 6px;font-size:12px;border:1px solid #e2e8f0;border-radius:4px">' +
+                '<label class="switch" style="margin:0"><input type="checkbox" ' + (a.enabled ? 'checked' : '') + ' onchange="updateModelAliasField(' + i + ',\'enabled\',this.checked)"><span class="slider"></span></label>' +
+                '<button class="btn btn-sm btn-danger" onclick="removeModelAliasRow(' + i + ')" style="padding:3px 6px;font-size:11px">×</button>' +
+                '</div>'
+            ).join('');
+        }
+        function addModelAliasRow() {
+            modelAliasesData.push({ from: '', to: '', enabled: true, note: '' });
+            renderModelAliases();
+        }
+        function removeModelAliasRow(i) {
+            modelAliasesData.splice(i, 1);
+            renderModelAliases();
+        }
+        function updateModelAliasField(i, field, value) {
+            if (!modelAliasesData[i]) return;
+            modelAliasesData[i][field] = value;
+        }
+        async function saveModelAliases() {
+            const seen = {};
+            const cleaned = [];
+            for (const a of modelAliasesData || []) {
+                const from = (a.from || '').trim();
+                const to = (a.to || '').trim();
+                if (!from || !to) continue;
+                const k = from.toLowerCase();
+                if (seen[k]) { alert(t('common.failed') + ': duplicate from ' + from); return; }
+                seen[k] = true;
+                cleaned.push({ from, to, enabled: a.enabled !== false, note: (a.note || '').trim() });
+            }
+            const r = await fetch('/admin/api/model-aliases', {
+                method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Admin-Password': password },
+                body: JSON.stringify({ aliases: cleaned })
+            });
+            const d = await r.json();
+            if (!r.ok || d.error) { alert(t('common.failed') + ': ' + (d.error || '')); return; }
+            alert(t('settings.modelAliasSaved'));
+            await loadModelAliases();
+        }
+        let apiKeysData = [];
+        async function loadApiKeys() {
+            try {
+                const res = await fetch('/admin/api/apikeys', { headers: { 'X-Admin-Password': password } });
+                const d = await res.json();
+                apiKeysData = (d.keys || []).map(k => ({
+                    id: k.id || '', name: k.name || '', key: k.key || '',
+                    groups: k.groups || [], enabled: k.enabled !== false,
+                    rpm: k.rpm || 0, rpd: k.rpd || 0, maxTokens: k.maxTokens || 0,
+                    requestCount: k.requestCount || 0, totalTokens: k.totalTokens || 0,
+                    totalCredits: k.totalCredits || 0, lastUsed: k.lastUsed || 0,
+                    usedMinute: k.usedMinute || 0, usedDay: k.usedDay || 0,
+                }));
+            } catch (e) {
+                apiKeysData = [];
+            }
+            await refreshGroupOptions();
+            renderApiKeyTable();
+        }
+        function renderApiKeyTable() {
+            const container = document.getElementById('apiKeyTable');
+            if (!container) return;
+            const groupOptions = (window.allGroups || []);
+            if (apiKeysData.length === 0) {
+                container.innerHTML = '<p style="color:#94a3b8;font-size:12px;padding:8px 0">—</p>';
+                return;
+            }
+            const header = '<div style="display:grid;grid-template-columns:110px 1fr 160px 60px 60px 80px 70px 36px;gap:6px;padding:0 6px 4px;font-size:11px;color:#64748b;font-weight:600">' +
+                '<div>' + t('settings.apiKeyName') + '</div>' +
+                '<div>' + t('settings.apiKeyValue') + '</div>' +
+                '<div>' + t('settings.apiKeyGroups') + '</div>' +
+                '<div>' + t('settings.apiKeyRPM') + '</div>' +
+                '<div>' + t('settings.apiKeyRPD') + '</div>' +
+                '<div>' + t('settings.apiKeyMaxTokens') + '</div>' +
+                '<div title="' + t('settings.apiKeyUsageTip') + '">' + t('settings.apiKeyUsage') + '</div>' +
+                '<div></div>' +
+                '</div>';
+            container.innerHTML = header + apiKeysData.map((k, i) => {
+                const groupsValue = (k.groups || []).join(', ');
+                const isAll = !k.groups || k.groups.length === 0 || k.groups.includes('*');
+                const usageBadge = '<div style="font-size:11px;color:#64748b;line-height:1.3;text-align:left" title="' + t('settings.apiKeyUsageTip') + '">' +
+                    '<div>' + (k.usedMinute || 0) + ' / ' + (k.usedDay || 0) + '</div>' +
+                    '<div style="color:#94a3b8">' + formatNum(k.requestCount || 0) + ' · ' + formatNum(k.totalTokens || 0) + '</div>' +
+                    '</div>';
+                return '<div style="display:grid;grid-template-columns:110px 1fr 160px 60px 60px 80px 70px 36px;gap:6px;align-items:center;padding:6px;border:1px solid #e2e8f0;border-radius:6px;margin-bottom:6px;background:#f8fafc">' +
+                    '<input type="text" value="' + escapeAttr(k.name) + '" oninput="updateApiKeyField(' + i + ',\'name\',this.value)" placeholder="' + t('settings.apiKeyName') + '" style="padding:4px 6px;font-size:12px;border:1px solid #e2e8f0;border-radius:4px">' +
+                    '<input type="text" value="' + escapeAttr(k.key) + '" oninput="updateApiKeyField(' + i + ',\'key\',this.value)" placeholder="sk-..." style="padding:4px 6px;font-size:12px;border:1px solid #e2e8f0;border-radius:4px;font-family:monospace">' +
+                    '<input type="text" value="' + escapeAttr(groupsValue) + '" oninput="updateApiKeyField(' + i + ',\'groupsText\',this.value)" list="groupSuggestSettings" placeholder="' + t('settings.apiKeyAll') + '" style="padding:4px 6px;font-size:12px;border:1px solid #e2e8f0;border-radius:4px"' + (isAll ? ' title="*"' : '') + '>' +
+                    '<input type="number" min="0" value="' + (k.rpm || 0) + '" oninput="updateApiKeyField(' + i + ',\'rpm\',this.value)" style="padding:4px 6px;font-size:12px;border:1px solid #e2e8f0;border-radius:4px;width:100%">' +
+                    '<input type="number" min="0" value="' + (k.rpd || 0) + '" oninput="updateApiKeyField(' + i + ',\'rpd\',this.value)" style="padding:4px 6px;font-size:12px;border:1px solid #e2e8f0;border-radius:4px;width:100%">' +
+                    '<input type="number" min="0" value="' + (k.maxTokens || 0) + '" oninput="updateApiKeyField(' + i + ',\'maxTokens\',this.value)" style="padding:4px 6px;font-size:12px;border:1px solid #e2e8f0;border-radius:4px;width:100%">' +
+                    usageBadge +
+                    '<div style="display:flex;align-items:center;gap:4px"><label class="switch" style="margin:0"><input type="checkbox" ' + (k.enabled ? 'checked' : '') + ' onchange="updateApiKeyField(' + i + ',\'enabled\',this.checked)"><span class="slider"></span></label><button class="btn btn-sm btn-danger" onclick="removeApiKeyRow(' + i + ')" style="padding:3px 6px;font-size:11px">×</button></div>' +
+                    '</div>';
+            }).join('') +
+                '<datalist id="groupSuggestSettings">' + groupOptions.map(g => '<option value="' + g + '"></option>').join('') + '</datalist>';
+        }
+        function escapeAttr(s) {
+            return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+        }
+        function addApiKeyRow() {
+            const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+            let key = 'sk-';
+            for (let i = 0; i < 32; i++) key += chars.charAt(Math.floor(Math.random() * chars.length));
+            apiKeysData.push({ id: '', name: '', key, groups: [], enabled: true, rpm: 0, rpd: 0, maxTokens: 0, requestCount: 0, totalTokens: 0, usedMinute: 0, usedDay: 0 });
+            renderApiKeyTable();
+        }
+        function removeApiKeyRow(i) {
+            apiKeysData.splice(i, 1);
+            renderApiKeyTable();
+        }
+        function updateApiKeyField(i, field, value) {
+            if (!apiKeysData[i]) return;
+            if (field === 'groupsText') {
+                apiKeysData[i].groups = String(value || '').split(',').map(s => s.trim()).filter(Boolean);
+            } else if (field === 'rpm' || field === 'rpd' || field === 'maxTokens') {
+                const n = parseInt(value, 10);
+                apiKeysData[i][field] = isNaN(n) || n < 0 ? 0 : n;
+            } else {
+                apiKeysData[i][field] = value;
+            }
         }
         async function loadThinkingConfig() {
             const res = await fetch('/admin/api/thinking', { headers: { 'X-Admin-Password': password } });
@@ -2617,14 +3141,37 @@
         async function saveSettings() {
             const requireApiKey = document.getElementById('requireApiKey').checked;
             const apiKeyInput = document.getElementById('apiKeyInput');
-            if (requireApiKey && !apiKeyInput.value.trim()) {
+            // 兼容：开启鉴权且既无默认 Key 也无多 Key 表，则自动生成默认 Key
+            if (requireApiKey && !apiKeyInput.value.trim() && (!apiKeysData || apiKeysData.length === 0)) {
                 generateApiKey();
             }
-            await fetch('/admin/api/settings', {
+            // 校验多 Key 表
+            const seen = {};
+            const cleaned = [];
+            for (const k of apiKeysData || []) {
+                const key = (k.key || '').trim();
+                if (!key) continue;
+                if (seen[key]) { alert(t('settings.apiKeyDuplicate') + ': ' + key); return; }
+                seen[key] = true;
+                cleaned.push({
+                    id: k.id || '', name: (k.name || '').trim(), key,
+                    groups: k.groups || [], enabled: k.enabled !== false,
+                    rpm: k.rpm || 0, rpd: k.rpd || 0, maxTokens: k.maxTokens || 0,
+                });
+            }
+            const r1 = await fetch('/admin/api/settings', {
                 method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Admin-Password': password },
                 body: JSON.stringify({ requireApiKey, apiKey: apiKeyInput.value })
             });
+            if (!r1.ok) { alert(t('common.saveFailed')); return; }
+            const r2 = await fetch('/admin/api/apikeys', {
+                method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Admin-Password': password },
+                body: JSON.stringify({ keys: cleaned })
+            });
+            const d2 = await r2.json();
+            if (!r2.ok || d2.error) { alert(t('common.saveFailed') + ': ' + (d2.error || '')); return; }
             alert(t('detail.saved'));
+            await loadApiKeys();
         }
         async function saveOverUsageConfig() {
             const allowOverUsage = document.getElementById('allowOverUsage').checked;
