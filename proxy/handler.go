@@ -265,6 +265,9 @@ func (h *Handler) backgroundRefresh() {
 // refreshAllAccounts 刷新所有账户信息
 func (h *Handler) refreshAllAccounts() {
 	accounts := config.GetAccounts()
+	now := time.Now().Unix()
+	const refreshInterval = 30 * 60 // 30 分钟
+
 	for i := range accounts {
 		account := &accounts[i]
 		if !account.Enabled || account.AccessToken == "" {
@@ -289,6 +292,11 @@ func (h *Handler) refreshAllAccounts() {
 				account.ProfileArn = profileArn
 				config.UpdateAccountProfileArn(account.ID, profileArn)
 			}
+		}
+
+		// 检查账户信息是否需要刷新（基于 LastRefresh 到期时间）
+		if account.LastRefresh > 0 && now-account.LastRefresh < refreshInterval {
+			continue
 		}
 
 		// 刷新账户信息
