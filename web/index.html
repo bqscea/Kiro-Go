@@ -924,6 +924,9 @@
             <div class="tab active" data-tab="accounts" data-i18n="tabs.accounts"></div>
             <div class="tab" data-tab="settings" data-i18n="tabs.settings"></div>
             <div class="tab" data-tab="api" data-i18n="tabs.api"></div>
+            <div class="tab" data-tab="observe" data-i18n="tabs.observe"></div>
+            <div class="tab" data-tab="backups" data-i18n="tabs.backups"></div>
+            <div class="tab" data-tab="alerts" data-i18n="tabs.alerts"></div>
         </div>
         <div id="tabAccounts" class="tab-content">
             <div class="card">
@@ -963,6 +966,7 @@
                             <option value="all" data-i18n="filter.all"></option>
                             <option value="enabled" data-i18n="filter.enabled"></option>
                             <option value="disabled" data-i18n="filter.disabled"></option>
+                            <option value="silent" data-i18n="filter.silent"></option>
                             <option value="banned" data-i18n="filter.banned"></option>
                         </select>
                         <select id="filterGroupSelect" onchange="onFilterChange()" style="padding:4px 6px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;background:#fff;cursor:pointer">
@@ -1181,6 +1185,83 @@
                 <p style="font-size:12px;color:#64748b;margin-top:4px" data-i18n="api.statsHint"></p>
             </div>
         </div>
+        <div id="tabObserve" class="tab-content hidden">
+            <div class="card">
+                <div class="card-header"><span class="card-title" data-i18n="observe.overview"></span>
+                    <span id="observeUptime" style="margin-left:auto;font-size:12px;color:#64748b"></span>
+                </div>
+                <div id="observeOverview" class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;padding:0 4px"></div>
+            </div>
+            <div class="card">
+                <div class="card-header"><span class="card-title" data-i18n="observe.heatmap"></span></div>
+                <small style="color:#64748b;font-size:12px;margin:0 0 8px;display:block;padding:0 4px" data-i18n="observe.heatmapHint"></small>
+                <div id="observeHeatmap" style="overflow-x:auto;padding:4px"></div>
+            </div>
+            <div class="card">
+                <div class="card-header"><span class="card-title" data-i18n="observe.keys"></span></div>
+                <div id="observeKeys" style="padding:4px"></div>
+            </div>
+            <div class="card">
+                <div class="card-header"><span class="card-title" data-i18n="observe.modelMix"></span></div>
+                <div id="observeModelMix" style="padding:4px"></div>
+            </div>
+            <div class="card">
+                <div class="card-header"><span class="card-title" data-i18n="observe.recentErrors"></span></div>
+                <div id="observeRecentErrors" style="padding:4px;max-height:360px;overflow-y:auto"></div>
+            </div>
+        </div>
+        <div id="tabBackups" class="tab-content hidden">
+            <div class="card">
+                <div class="card-header"><span class="card-title" data-i18n="backups.list"></span>
+                    <button class="btn btn-sm btn-primary" onclick="createBackupNow()" data-i18n="backups.create"></button>
+                </div>
+                <div id="backupsList" style="padding:4px"></div>
+            </div>
+            <div class="card">
+                <div class="card-header"><span class="card-title" data-i18n="backups.schedule"></span></div>
+                <div style="padding:12px">
+                    <div class="form-group">
+                        <label style="display:flex;align-items:center;gap:10px">
+                            <label class="switch"><input type="checkbox" id="scheduleEnabled"><span class="slider"></span></label>
+                            <span data-i18n="backups.scheduleEnabled"></span>
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label data-i18n="backups.scheduleCadence"></label>
+                        <select id="scheduleCadence" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px">
+                            <option value="hourly" data-i18n="backups.cadenceHourly"></option>
+                            <option value="daily" data-i18n="backups.cadenceDaily"></option>
+                            <option value="weekly" data-i18n="backups.cadenceWeekly"></option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label data-i18n="backups.scheduleKeep"></label>
+                        <input type="number" id="scheduleKeep" min="1" max="200" value="50" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px">
+                    </div>
+                    <button class="btn btn-primary" onclick="saveBackupSchedule()" data-i18n="common.save"></button>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header"><span class="card-title" data-i18n="backups.upload"></span></div>
+                <small style="color:#64748b;font-size:12px;margin:0 0 8px;display:block;padding:0 12px" data-i18n="backups.uploadHint"></small>
+                <div style="padding:12px">
+                    <input type="file" id="backupFileInput" accept=".json" style="margin-bottom:8px">
+                    <button class="btn btn-primary" onclick="uploadBackup()" data-i18n="backups.upload"></button>
+                </div>
+            </div>
+        </div>
+        <div id="tabAlerts" class="tab-content hidden">
+            <div class="card">
+                <div class="card-header"><span class="card-title" data-i18n="alerts.rules"></span>
+                    <button class="btn btn-sm btn-primary" onclick="openAlertModal()" data-i18n="alerts.create"></button>
+                </div>
+                <div id="alertsList" style="padding:4px"></div>
+            </div>
+            <div class="card">
+                <div class="card-header"><span class="card-title" data-i18n="alerts.history"></span></div>
+                <div id="alertsHistory" style="padding:4px"></div>
+            </div>
+        </div>
     </div>
     <div id="addModal" class="modal">
         <div class="modal-content">
@@ -1243,6 +1324,9 @@
                 'tabs.accounts': '账号',
                 'tabs.settings': '设置',
                 'tabs.api': 'API',
+                'tabs.observe': '观测',
+                'tabs.backups': '备份',
+                'tabs.alerts': '告警',
                 'accounts.title': '账号列表',
                 'accounts.add': '添加账号',
                 'accounts.empty': '暂无账号',
@@ -1258,6 +1342,7 @@
                 'accounts.noToken': '无Token',
                 'accounts.expired': '已过期',
                 'accounts.disabled': '已禁用',
+                'accounts.silent': '静默',
                 'accounts.normal': '正常',
                 'accounts.enabled': '已启用',
                 'accounts.banned': '已封禁',
@@ -1377,6 +1462,11 @@
                 'api.statsHint': '需要在请求头中携带 API Key 鉴权（Authorization: Bearer sk-xxx），未启用 API Key 验证时无需鉴权',
                 'detail.title': '账号详情',
                 'detail.basicInfo': '基本信息',
+                'detail.status': '状态',
+                'detail.silentReason': '静默原因',
+                'detail.silentTime': '静默时间',
+                'detail.setSilent': '加入静默',
+                'detail.removeSilent': '移除静默',
                 'detail.email': '邮箱',
                 'detail.userId': '用户ID',
                 'detail.authMethod': '认证方式',
@@ -1536,6 +1626,7 @@
                 'filter.all': '全部',
                 'filter.enabled': '已启用',
                 'filter.disabled': '已禁用',
+                'filter.silent': '静默',
                 'filter.banned': '已封禁',
                 'accounts.weight': '权重',
                 'detail.weight': '请求权重',
@@ -1588,7 +1679,81 @@
                 'promptFilter.replace': '替换为（留空则删除）',
                 'promptFilter.emptyRemove': '留空则删除匹配内容',
                 'promptFilter.addRegex': '+ 正则替换规则',
-                'promptFilter.addContains': '+ 行级过滤规则'
+                'promptFilter.addContains': '+ 行级过滤规则',
+                'observe.title': '实时观测',
+                'observe.overview': '总览',
+                'observe.rpm1': '近 1m 请求',
+                'observe.rpm5': '近 5m 平均/分',
+                'observe.errRate5': '近 5m 错误率',
+                'observe.inTpm5': '入 Tokens/分',
+                'observe.outTpm5': '出 Tokens/分',
+                'observe.credits5': '近 5m Credits',
+                'observe.credits60': '近 1h Credits',
+                'observe.activeAccts': '活跃账号',
+                'observe.totalAccts': '记录账号',
+                'observe.totalModels': '使用模型',
+                'observe.heatmap': '账号热图（近 60 分钟，每格 1 分钟）',
+                'observe.heatmapHint': '颜色深浅 = 请求数；红色 = 失败；悬停查看详情',
+                'observe.keys': 'API Key 当前用量',
+                'observe.keyName': '名称',
+                'observe.keyMinute': '本分钟',
+                'observe.keyDay': '本日',
+                'observe.keyTotalReq': '累计请求',
+                'observe.keyTotalTokens': '累计 Tokens',
+                'observe.keyTotalCredits': '累计 Credits',
+                'observe.modelMix': '模型分布（按累计 Credits）',
+                'observe.modelName': '模型',
+                'observe.modelReqs': '请求',
+                'observe.modelTokens': 'Tokens (in / out)',
+                'observe.modelCredits': 'Credits',
+                'observe.recentErrors': '最近错误',
+                'observe.errTime': '时间',
+                'observe.errAccount': '账号',
+                'observe.errModel': '模型',
+                'observe.errMessage': '错误',
+                'observe.empty': '暂无数据',
+                'observe.global': '全局',
+                'observe.startedAgo': '已运行 {0}',
+                'backups.title': '配置备份',
+                'backups.list': '快照列表',
+                'backups.create': '立即快照',
+                'backups.createNote': '备注（可选）',
+                'backups.upload': '上传恢复',
+                'backups.schedule': '定时快照',
+                'backups.scheduleEnabled': '启用定时',
+                'backups.scheduleCadence': '频率',
+                'backups.scheduleKeep': '保留份数',
+                'backups.cadenceHourly': '每小时',
+                'backups.cadenceDaily': '每天',
+                'backups.cadenceWeekly': '每周',
+                'backups.id': 'ID',
+                'backups.createdAt': '创建时间',
+                'backups.kind': '类型',
+                'backups.size': '大小',
+                'backups.accounts': '账号数',
+                'backups.note': '备注',
+                'backups.actions': '操作',
+                'backups.download': '下载',
+                'backups.restore': '回滚',
+                'backups.delete': '删除',
+                'backups.confirmRestore': '确定回滚到此快照？当前配置将被覆盖（会自动创建 pre-restore 快照）',
+                'backups.confirmDelete': '确定删除此快照？',
+                'backups.restoreSuccess': '回滚成功',
+                'backups.createSuccess': '快照已创建',
+                'backups.deleteSuccess': '快照已删除',
+                'backups.uploadHint': '上传 config.json 文件恢复配置（会自动创建 pre-restore 快照）',
+                'backups.empty': '暂无快照',
+                'backups.kindManual': '手动',
+                'backups.kindAuto': '自动',
+                'backups.kindScheduled': '定时',
+                'backups.kindPreRestore': '回滚前',
+                'alerts.rules': '告警规则',
+                'alerts.create': '创建规则',
+                'alerts.history': '告警历史',
+                'alerts.noRules': '暂无规则',
+                'alerts.noHistory': '暂无历史',
+                'alerts.test': '测试',
+                'alerts.confirmDelete': '确定删除此规则？'
             },
             en: {
                 'login.subtitle': 'Enter admin password to login',
@@ -1607,6 +1772,9 @@
                 'tabs.accounts': 'Accounts',
                 'tabs.settings': 'Settings',
                 'tabs.api': 'API',
+                'tabs.observe': 'Observe',
+                'tabs.backups': 'Backups',
+                'tabs.alerts': 'Alerts',
                 'accounts.title': 'Account List',
                 'accounts.add': 'Add Account',
                 'accounts.empty': 'No accounts',
@@ -1622,6 +1790,7 @@
                 'accounts.noToken': 'No Token',
                 'accounts.expired': 'Expired',
                 'accounts.disabled': 'Disabled',
+                'accounts.silent': 'Silent',
                 'accounts.normal': 'Active',
                 'accounts.enabled': 'Enabled',
                 'accounts.banned': 'Banned',
@@ -1735,6 +1904,11 @@
                 'api.statsHint': 'Requires API Key in header (Authorization: Bearer sk-xxx). No auth needed if API Key verification is disabled.',
                 'detail.title': 'Account Details',
                 'detail.basicInfo': 'Basic Info',
+                'detail.status': 'Status',
+                'detail.silentReason': 'Silent Reason',
+                'detail.silentTime': 'Silent Time',
+                'detail.setSilent': 'Add Silent',
+                'detail.removeSilent': 'Remove Silent',
                 'detail.email': 'Email',
                 'detail.userId': 'User ID',
                 'detail.authMethod': 'Auth Method',
@@ -1890,6 +2064,7 @@
                 'filter.all': 'All',
                 'filter.enabled': 'Enabled',
                 'filter.disabled': 'Disabled',
+                'filter.silent': 'Silent',
                 'filter.banned': 'Banned',
                 'accounts.weight': 'Weight',
                 'detail.weight': 'Request Weight',
@@ -1942,7 +2117,81 @@
                 'promptFilter.replace': 'Replace with (empty = remove)',
                 'promptFilter.emptyRemove': 'empty removes matched content',
                 'promptFilter.addRegex': '+ Regex Replace Rule',
-                'promptFilter.addContains': '+ Line Filter Rule'
+                'promptFilter.addContains': '+ Line Filter Rule',
+                'observe.title': 'Live Observability',
+                'observe.overview': 'Overview',
+                'observe.rpm1': 'Reqs (1m)',
+                'observe.rpm5': 'Avg/min (5m)',
+                'observe.errRate5': 'Err Rate (5m)',
+                'observe.inTpm5': 'In Tokens/min',
+                'observe.outTpm5': 'Out Tokens/min',
+                'observe.credits5': 'Credits (5m)',
+                'observe.credits60': 'Credits (1h)',
+                'observe.activeAccts': 'Active Accts',
+                'observe.totalAccts': 'Tracked Accts',
+                'observe.totalModels': 'Models',
+                'observe.heatmap': 'Account Heatmap (60 min × 1-min cells)',
+                'observe.heatmapHint': 'Color intensity = req count; red = failures; hover for detail',
+                'observe.keys': 'API Key Live Usage',
+                'observe.keyName': 'Name',
+                'observe.keyMinute': 'This min',
+                'observe.keyDay': 'Today',
+                'observe.keyTotalReq': 'Total Reqs',
+                'observe.keyTotalTokens': 'Total Tokens',
+                'observe.keyTotalCredits': 'Total Credits',
+                'observe.modelMix': 'Model Mix (by cumulative credits)',
+                'observe.modelName': 'Model',
+                'observe.modelReqs': 'Reqs',
+                'observe.modelTokens': 'Tokens (in / out)',
+                'observe.modelCredits': 'Credits',
+                'observe.recentErrors': 'Recent Errors',
+                'observe.errTime': 'Time',
+                'observe.errAccount': 'Account',
+                'observe.errModel': 'Model',
+                'observe.errMessage': 'Message',
+                'observe.empty': 'No data',
+                'observe.global': 'Global',
+                'observe.startedAgo': 'Running for {0}',
+                'backups.title': 'Config Backups',
+                'backups.list': 'Snapshot List',
+                'backups.create': 'Create Snapshot',
+                'backups.createNote': 'Note (optional)',
+                'backups.upload': 'Upload & Restore',
+                'backups.schedule': 'Scheduled Backups',
+                'backups.scheduleEnabled': 'Enable Schedule',
+                'backups.scheduleCadence': 'Cadence',
+                'backups.scheduleKeep': 'Keep',
+                'backups.cadenceHourly': 'Hourly',
+                'backups.cadenceDaily': 'Daily',
+                'backups.cadenceWeekly': 'Weekly',
+                'backups.id': 'ID',
+                'backups.createdAt': 'Created',
+                'backups.kind': 'Kind',
+                'backups.size': 'Size',
+                'backups.accounts': 'Accounts',
+                'backups.note': 'Note',
+                'backups.actions': 'Actions',
+                'backups.download': 'Download',
+                'backups.restore': 'Restore',
+                'backups.delete': 'Delete',
+                'backups.confirmRestore': 'Restore to this snapshot? Current config will be overwritten (a pre-restore snapshot will be created automatically)',
+                'backups.confirmDelete': 'Delete this snapshot?',
+                'backups.restoreSuccess': 'Restored successfully',
+                'backups.createSuccess': 'Snapshot created',
+                'backups.deleteSuccess': 'Snapshot deleted',
+                'backups.uploadHint': 'Upload a config.json file to restore (a pre-restore snapshot will be created automatically)',
+                'backups.empty': 'No snapshots',
+                'backups.kindManual': 'Manual',
+                'backups.kindAuto': 'Auto',
+                'backups.kindScheduled': 'Scheduled',
+                'backups.kindPreRestore': 'Pre-restore',
+                'alerts.rules': 'Alert Rules',
+                'alerts.create': 'Create Rule',
+                'alerts.history': 'Alert History',
+                'alerts.noRules': 'No rules',
+                'alerts.noHistory': 'No history',
+                'alerts.test': 'Test',
+                'alerts.confirmDelete': 'Delete this rule?'
             }
         };
         let currentLang = localStorage.getItem('kiro_lang') || 'zh';
@@ -2184,8 +2433,9 @@
         }
         function getFilteredAccounts() {
             return accountsData.filter(a => {
-                if (filterStatus === 'enabled' && !a.enabled) return false;
-                if (filterStatus === 'disabled' && (a.enabled || (a.banStatus && a.banStatus !== 'ACTIVE'))) return false;
+                if (filterStatus === 'enabled' && (!a.enabled || a.silent)) return false;
+                if (filterStatus === 'disabled' && (a.enabled || a.silent || (a.banStatus && a.banStatus !== 'ACTIVE'))) return false;
+                if (filterStatus === 'silent' && !a.silent) return false;
                 if (filterStatus === 'banned' && (!a.banStatus || a.banStatus === 'ACTIVE')) return false;
                 if (filterGroup === '__default__') {
                     if (a.groups && a.groups.length > 0) return false;
@@ -2400,8 +2650,10 @@
                 const d = await res.json();
                 if (d.success) {
                     alert(t('batch.silentResult', d.count || ids.length));
+                    accountsData.forEach(a => { if (ids.includes(a.id)) { a.silent = true; a.enabled = false; a.silentReason = 'manual batch'; a.silentTime = Math.floor(Date.now() / 1000); } });
                     selectedAccounts.clear();
                     updateBatchBar();
+                    renderAccounts();
                     loadStats();
                 } else {
                     alert(t('common.failed') + ': ' + (d.error || ''));
@@ -2423,8 +2675,10 @@
                 const d = await res.json();
                 if (d.success) {
                     alert(t('batch.removeSilentResult', d.count || ids.length));
+                    accountsData.forEach(a => { if (ids.includes(a.id)) { a.silent = false; if (!a.banStatus || a.banStatus === 'ACTIVE') a.enabled = true; a.silentReason = ''; a.silentTime = 0; } });
                     selectedAccounts.clear();
                     updateBatchBar();
+                    renderAccounts();
                     loadStats();
                 } else {
                     alert(t('common.failed') + ': ' + (d.error || ''));
@@ -2556,7 +2810,10 @@
             // 检查是否为封禁状态
             const isBanned = a.banStatus && a.banStatus !== 'ACTIVE';
 
-            if (isBanned) {
+            if (a.silent) {
+                badges.push('<span class="badge" style="background:#64748b;color:#fff">' + t('accounts.silent') + '</span>');
+                badges.push('<span class="badge badge-warning">' + t('accounts.disabled') + '</span>');
+            } else if (isBanned) {
                 // 封禁账号：显示"封禁 + 禁用"
                 if (a.banStatus === 'BANNED') {
                     badges.push('<span class="badge badge-banned">' + t('accounts.banned') + '</span>');
@@ -2599,6 +2856,32 @@
             if (diff < 86400) return Math.floor(diff / 3600) + t('time.hours');
             return Math.floor(diff / 86400) + t('time.days');
         }
+        async function toggleSilent(id, silent) {
+            try {
+                const res = await fetch('/admin/api/accounts/' + id, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', 'X-Admin-Password': password },
+                    body: JSON.stringify({ silent, silentReason: silent ? 'manual' : '' })
+                });
+                const d = await res.json();
+                if (d.success) {
+                    const a = accountsData.find(x => x.id === id);
+                    if (a) {
+                        a.silent = silent;
+                        a.enabled = silent ? false : true;
+                        a.silentReason = silent ? 'manual' : '';
+                        a.silentTime = silent ? Math.floor(Date.now() / 1000) : 0;
+                    }
+                    renderAccounts();
+                    showDetail(id);
+                    loadStats();
+                } else {
+                    alert(t('detail.saveFailed') + ': ' + (d.error || ''));
+                }
+            } catch (e) {
+                alert(t('detail.saveFailed'));
+            }
+        }
         async function refreshAccount(id) {
             const card = event.target.closest('.account-card');
             if (card) card.classList.add('loading');
@@ -2618,7 +2901,10 @@
                 '<div class="detail-item"><div class="detail-label">' + t('detail.userId') + '</div><div class="detail-value">' + (a.userId || '-') + '</div></div>' +
                 '<div class="detail-item"><div class="detail-label">' + t('detail.authMethod') + '</div><div class="detail-value">' + formatAuthMethod(a.provider || a.authMethod) + '</div></div>' +
                 '<div class="detail-item"><div class="detail-label">' + t('detail.region') + '</div><div class="detail-value">' + (a.region || 'us-east-1') + '</div></div>' +
-                '</div></div>' +
+                '<div class="detail-item"><div class="detail-label">' + t('detail.status') + '</div><div class="detail-value">' + (a.silent ? t('accounts.silent') : (a.enabled ? t('accounts.enabled') : t('accounts.disabled'))) + '</div></div>' +
+                (a.silent ? '<div class="detail-item"><div class="detail-label">' + t('detail.silentReason') + '</div><div class="detail-value">' + escapeHtml(a.silentReason || '-') + '</div></div>' +
+                '<div class="detail-item"><div class="detail-label">' + t('detail.silentTime') + '</div><div class="detail-value">' + (a.silentTime ? new Date(a.silentTime * 1000).toLocaleString() : '-') + '</div></div>' : '') +
+                '</div><div style="margin-top:10px"><button class="btn btn-sm btn-secondary" onclick="toggleSilent(\'' + id + '\',' + (!a.silent) + ')">' + (a.silent ? t('detail.removeSilent') : t('detail.setSilent')) + '</button></div></div>' +
                 '<div class="detail-section"><h4>' + t('detail.machineId') + '</h4><div class="machine-id-row">' +
                 '<input type="text" id="machineIdInput" value="' + (a.machineId || '') + '" placeholder="UUID">' +
                 '<button class="btn btn-sm btn-secondary" onclick="generateMachineId()">' + t('detail.generate') + '</button>' +
@@ -3477,6 +3763,10 @@
             document.querySelectorAll('.tab').forEach(tabEl => tabEl.classList.toggle('active', tabEl.dataset.tab === tab));
             document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
             document.getElementById('tab' + tab.charAt(0).toUpperCase() + tab.slice(1)).classList.remove('hidden');
+            if (tab === 'observe') { startObserve(); stopBackups(); stopAlerts(); }
+            else if (tab === 'backups') { startBackups(); stopObserve(); stopAlerts(); }
+            else if (tab === 'alerts') { startAlerts(); stopObserve(); stopBackups(); }
+            else { stopObserve(); stopBackups(); stopAlerts(); }
         }
         async function toggleAccount(id, enabled) {
             await fetch('/admin/api/accounts/' + id, {
@@ -3963,6 +4253,477 @@
             } catch (e) { }
             loadAccounts();
         }
+
+        // ==================== Observability ====================
+        let observeTimer = null;
+        let observeSSE = null;
+        let observeActive = false;
+
+        function fmtNum(n) {
+            if (n == null) return '0';
+            if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B';
+            if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
+            if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+            return Number.isInteger(n) ? String(n) : n.toFixed(2);
+        }
+        function fmtPct(p) { return (p * 100).toFixed(2) + '%'; }
+        function fmtUptime(sec) {
+            if (sec <= 0) return '-';
+            const d = Math.floor(sec / 86400);
+            const h = Math.floor((sec % 86400) / 3600);
+            const m = Math.floor((sec % 3600) / 60);
+            const parts = [];
+            if (d) parts.push(d + 'd');
+            if (h) parts.push(h + 'h');
+            parts.push(m + 'm');
+            return parts.join(' ');
+        }
+        function fmtTime(ts) {
+            if (!ts) return '-';
+            const d = new Date(ts * 1000);
+            const pad = (n) => String(n).padStart(2, '0');
+            return pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+        }
+        function escapeHtml(s) {
+            return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        }
+
+        async function observeFetch(url) {
+            const res = await fetch(url, { headers: { 'X-Admin-Password': password } });
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            return res.json();
+        }
+
+        async function loadObserve() {
+            if (!observeActive) return;
+            try {
+                const [overview, heatmap, keys, mix, errs] = await Promise.all([
+                    observeFetch('/admin/api/observe/overview'),
+                    observeFetch('/admin/api/observe/account-heatmap?windowMin=60'),
+                    observeFetch('/admin/api/observe/keys'),
+                    observeFetch('/admin/api/observe/model-mix'),
+                    observeFetch('/admin/api/observe/recent-errors?limit=100'),
+                ]);
+                renderObserveOverview(overview);
+                renderObserveHeatmap(heatmap);
+                renderObserveKeys(keys);
+                renderObserveModelMix(mix);
+                renderObserveErrors(errs);
+            } catch (e) { /* silent: avoid noisy alerts on transient failures */ }
+        }
+
+        function renderObserveOverview(o) {
+            const el = document.getElementById('observeOverview');
+            if (!el) return;
+            const uptime = (o && o.startedAt && o.nowUnix) ? (o.nowUnix - o.startedAt) : 0;
+            const u = document.getElementById('observeUptime');
+            if (u) u.textContent = t('observe.startedAgo', fmtUptime(uptime));
+            const cards = [
+                ['observe.rpm1', fmtNum(o.rpm1 || 0)],
+                ['observe.rpm5', fmtNum(o.rpm5Avg || 0)],
+                ['observe.errRate5', fmtPct(o.errRate5 || 0)],
+                ['observe.inTpm5', fmtNum(o.inTpm5 || 0)],
+                ['observe.outTpm5', fmtNum(o.outTpm5 || 0)],
+                ['observe.credits5', fmtNum(o.credits5 || 0)],
+                ['observe.credits60', fmtNum(o.credits60 || 0)],
+                ['observe.activeAccts', (o.activeAccts || 0) + ' / ' + (o.totalAccts || 0)],
+                ['observe.totalModels', String(o.totalModels || 0)],
+            ];
+            el.innerHTML = cards.map(([k, v]) =>
+                `<div class="stat-card"><div class="stat-value" style="font-size:20px">${escapeHtml(v)}</div><div class="stat-label">${escapeHtml(t(k))}</div></div>`
+            ).join('');
+        }
+
+        function heatColor(reqs, failures, maxReqs) {
+            if (reqs <= 0) return '#f1f5f9';
+            const intensity = Math.min(1, reqs / Math.max(maxReqs, 1));
+            if (failures > 0 && failures / reqs >= 0.3) {
+                // 失败占比高，红色
+                const a = 0.25 + 0.6 * intensity;
+                return `rgba(220,38,38,${a.toFixed(2)})`;
+            }
+            const a = 0.2 + 0.7 * intensity;
+            return `rgba(37,99,235,${a.toFixed(2)})`;
+        }
+
+        function renderObserveHeatmap(data) {
+            const el = document.getElementById('observeHeatmap');
+            if (!el || !data) return;
+            const rows = [];
+            // global 在最上
+            rows.push({ id: '_global_', email: t('observe.global'), cells: data.global ? data.global.cells : [] });
+            for (const a of (data.accounts || [])) {
+                rows.push({ id: a.accountId, email: a.email || a.accountId.slice(0, 8), cells: a.cells || [] });
+            }
+            // 找 maxReqs 用于色阶
+            let maxReqs = 1;
+            for (const r of rows) {
+                for (const c of r.cells) {
+                    if (c.reqs > maxReqs) maxReqs = c.reqs;
+                }
+            }
+            const cellW = 8, cellH = 14, labelW = 180, gap = 1;
+            const windowMin = data.windowMin || 60;
+            const w = labelW + windowMin * (cellW + gap);
+            const h = rows.length * (cellH + gap) + 24;
+            const parts = [`<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg" style="font-family:inherit">`];
+            // 时间刻度（每 10 分钟一个）
+            for (let i = 0; i < windowMin; i += 10) {
+                const x = labelW + (windowMin - 1 - i) * (cellW + gap);
+                parts.push(`<text x="${x}" y="12" font-size="10" fill="#64748b">-${i}m</text>`);
+            }
+            rows.forEach((r, ri) => {
+                const y = 18 + ri * (cellH + gap);
+                const label = (r.email || '').length > 24 ? r.email.slice(0, 22) + '…' : r.email;
+                parts.push(`<text x="0" y="${y + cellH - 3}" font-size="11" fill="#1e293b">${escapeHtml(label)}</text>`);
+                // cells 的 offset=0 是当前分钟，把它放到最右
+                for (const c of r.cells) {
+                    const x = labelW + (windowMin - 1 - c.offset) * (cellW + gap);
+                    const fill = heatColor(c.reqs, c.failures, maxReqs);
+                    const tip = `${r.email} · -${c.offset}m · ${c.reqs} req${c.failures > 0 ? ' (' + c.failures + ' fail)' : ''}${c.credits > 0 ? ' · ' + c.credits.toFixed(2) + ' cr' : ''}`;
+                    parts.push(`<rect x="${x}" y="${y}" width="${cellW}" height="${cellH}" fill="${fill}" stroke="#e2e8f0" stroke-width="0.5"><title>${escapeHtml(tip)}</title></rect>`);
+                }
+            });
+            parts.push('</svg>');
+            el.innerHTML = parts.join('');
+        }
+
+        function renderObserveKeys(data) {
+            const el = document.getElementById('observeKeys');
+            if (!el) return;
+            const keys = (data && data.keys) || [];
+            if (!keys.length) { el.innerHTML = `<div style="color:#64748b;font-size:13px;padding:8px">${escapeHtml(t('observe.empty'))}</div>`; return; }
+            const head = `<thead><tr style="background:#f8fafc;text-align:left">
+                <th style="padding:6px 8px;font-size:12px">${escapeHtml(t('observe.keyName'))}</th>
+                <th style="padding:6px 8px;font-size:12px">${escapeHtml(t('observe.keyMinute'))} (RPM)</th>
+                <th style="padding:6px 8px;font-size:12px">${escapeHtml(t('observe.keyDay'))} (RPD)</th>
+                <th style="padding:6px 8px;font-size:12px">${escapeHtml(t('observe.keyTotalReq'))}</th>
+                <th style="padding:6px 8px;font-size:12px">${escapeHtml(t('observe.keyTotalTokens'))}</th>
+                <th style="padding:6px 8px;font-size:12px">${escapeHtml(t('observe.keyTotalCredits'))}</th>
+            </tr></thead>`;
+            const body = keys.map(k => {
+                const minTxt = k.usedMinute + (k.rpm > 0 ? ' / ' + k.rpm : '');
+                const dayTxt = k.usedDay + (k.rpd > 0 ? ' / ' + k.rpd : '');
+                const minPct = k.rpm > 0 ? Math.min(100, (k.usedMinute / k.rpm) * 100) : 0;
+                const dayPct = k.rpd > 0 ? Math.min(100, (k.usedDay / k.rpd) * 100) : 0;
+                const minColor = minPct >= 90 ? '#dc2626' : minPct >= 70 ? '#f59e0b' : '#2563eb';
+                const dayColor = dayPct >= 90 ? '#dc2626' : dayPct >= 70 ? '#f59e0b' : '#2563eb';
+                const bar = (pct, color) => k.rpm > 0 || k.rpd > 0
+                    ? `<div style="width:80px;height:4px;background:#e2e8f0;border-radius:2px;margin-top:2px"><div style="width:${pct}%;height:100%;background:${color};border-radius:2px"></div></div>`
+                    : '';
+                return `<tr style="border-top:1px solid #f1f5f9">
+                    <td style="padding:6px 8px;font-size:13px">${escapeHtml(k.name || k.id)} ${k.enabled ? '' : '<span style="color:#94a3b8;font-size:11px">(off)</span>'}</td>
+                    <td style="padding:6px 8px;font-size:13px">${escapeHtml(minTxt)}${k.rpm > 0 ? bar(minPct, minColor) : ''}</td>
+                    <td style="padding:6px 8px;font-size:13px">${escapeHtml(dayTxt)}${k.rpd > 0 ? bar(dayPct, dayColor) : ''}</td>
+                    <td style="padding:6px 8px;font-size:13px">${fmtNum(k.requestCount || 0)}</td>
+                    <td style="padding:6px 8px;font-size:13px">${fmtNum(k.totalTokens || 0)}</td>
+                    <td style="padding:6px 8px;font-size:13px">${fmtNum(k.totalCredits || 0)}</td>
+                </tr>`;
+            }).join('');
+            el.innerHTML = `<table style="width:100%;border-collapse:collapse">${head}<tbody>${body}</tbody></table>`;
+        }
+
+        function renderObserveModelMix(data) {
+            const el = document.getElementById('observeModelMix');
+            if (!el) return;
+            const models = (data && data.models) || [];
+            if (!models.length) { el.innerHTML = `<div style="color:#64748b;font-size:13px;padding:8px">${escapeHtml(t('observe.empty'))}</div>`; return; }
+            const total = models.reduce((s, m) => s + (m.credits || 0), 0) || 1;
+            const palette = ['#2563eb', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#6366f1'];
+            // 横向条形图
+            const head = `<thead><tr style="background:#f8fafc;text-align:left">
+                <th style="padding:6px 8px;font-size:12px">${escapeHtml(t('observe.modelName'))}</th>
+                <th style="padding:6px 8px;font-size:12px">${escapeHtml(t('observe.modelReqs'))}</th>
+                <th style="padding:6px 8px;font-size:12px">${escapeHtml(t('observe.modelTokens'))}</th>
+                <th style="padding:6px 8px;font-size:12px;width:40%">${escapeHtml(t('observe.modelCredits'))}</th>
+            </tr></thead>`;
+            const body = models.map((m, i) => {
+                const pct = ((m.credits || 0) / total) * 100;
+                const color = palette[i % palette.length];
+                return `<tr style="border-top:1px solid #f1f5f9">
+                    <td style="padding:6px 8px;font-size:13px;font-family:ui-monospace,monospace">${escapeHtml(m.model)}</td>
+                    <td style="padding:6px 8px;font-size:13px">${fmtNum(m.reqs)}</td>
+                    <td style="padding:6px 8px;font-size:13px">${fmtNum(m.inTokens)} / ${fmtNum(m.outTokens)}</td>
+                    <td style="padding:6px 8px;font-size:13px">
+                        <div style="display:flex;align-items:center;gap:6px">
+                            <div style="flex:1;height:8px;background:#f1f5f9;border-radius:4px;overflow:hidden">
+                                <div style="width:${pct.toFixed(1)}%;height:100%;background:${color}"></div>
+                            </div>
+                            <span style="font-size:12px;color:#475569;min-width:80px;text-align:right">${fmtNum(m.credits)} (${pct.toFixed(1)}%)</span>
+                        </div>
+                    </td>
+                </tr>`;
+            }).join('');
+            el.innerHTML = `<table style="width:100%;border-collapse:collapse">${head}<tbody>${body}</tbody></table>`;
+        }
+
+        function renderObserveErrors(data) {
+            const el = document.getElementById('observeRecentErrors');
+            if (!el) return;
+            const errs = (data && data.errors) || [];
+            if (!errs.length) { el.innerHTML = `<div style="color:#64748b;font-size:13px;padding:8px">${escapeHtml(t('observe.empty'))}</div>`; return; }
+            const head = `<thead><tr style="background:#f8fafc;text-align:left">
+                <th style="padding:6px 8px;font-size:12px">${escapeHtml(t('observe.errTime'))}</th>
+                <th style="padding:6px 8px;font-size:12px">${escapeHtml(t('observe.errAccount'))}</th>
+                <th style="padding:6px 8px;font-size:12px">${escapeHtml(t('observe.errModel'))}</th>
+                <th style="padding:6px 8px;font-size:12px">${escapeHtml(t('observe.errMessage'))}</th>
+            </tr></thead>`;
+            const body = errs.map(e => {
+                const acct = e.email ? getDisplayEmail(e.email, e.accountId) : (e.accountId || '').slice(0, 8);
+                return `<tr style="border-top:1px solid #f1f5f9">
+                    <td style="padding:6px 8px;font-size:12px;color:#475569;white-space:nowrap;font-family:ui-monospace,monospace">${escapeHtml(fmtTime(e.ts))}</td>
+                    <td style="padding:6px 8px;font-size:13px">${escapeHtml(acct)}</td>
+                    <td style="padding:6px 8px;font-size:12px;font-family:ui-monospace,monospace">${escapeHtml(e.model || '-')}</td>
+                    <td style="padding:6px 8px;font-size:12px;color:#dc2626">${escapeHtml(e.message || '-')}</td>
+                </tr>`;
+            }).join('');
+            el.innerHTML = `<table style="width:100%;border-collapse:collapse">${head}<tbody>${body}</tbody></table>`;
+        }
+
+        function startObserve() {
+            observeActive = true;
+            loadObserve();
+            if (observeTimer) clearInterval(observeTimer);
+            // 兜底 10s 轮询；SSE 命中则更快
+            observeTimer = setInterval(loadObserve, 10000);
+            ensureObserveSSE();
+        }
+        function stopObserve() {
+            observeActive = false;
+            if (observeTimer) { clearInterval(observeTimer); observeTimer = null; }
+        }
+        function ensureObserveSSE() {
+            if (observeSSE) return;
+            try {
+                const url = '/admin/api/events?password=' + encodeURIComponent(password);
+                observeSSE = new EventSource(url);
+                observeSSE.addEventListener('observe_tick', () => { if (observeActive) loadObserve(); });
+                observeSSE.onerror = () => {
+                    // 5s 后重连
+                    if (observeSSE) { observeSSE.close(); observeSSE = null; }
+                    setTimeout(() => { if (observeActive) ensureObserveSSE(); }, 5000);
+                };
+            } catch (e) { /* SSE not supported, fallback to polling */ }
+        }
+
+        // ==================== Backups ====================
+        async function loadBackups() {
+            try {
+                const res = await fetch('/admin/api/backups?autoInclude=false', {
+                    headers: { 'X-Admin-Password': password }
+                });
+                const data = await res.json();
+                renderBackupsList(data.backups || []);
+            } catch (e) { /* silent */ }
+        }
+
+        async function loadBackupSchedule() {
+            try {
+                const res = await fetch('/admin/api/backups/schedule', {
+                    headers: { 'X-Admin-Password': password }
+                });
+                const data = await res.json();
+                const s = data.schedule || {};
+                document.getElementById('scheduleEnabled').checked = s.enabled || false;
+                document.getElementById('scheduleCadence').value = s.cadence || 'daily';
+                document.getElementById('scheduleKeep').value = s.keep || 50;
+            } catch (e) { /* silent */ }
+        }
+
+        function renderBackupsList(backups) {
+            const el = document.getElementById('backupsList');
+            if (!el) return;
+            if (!backups.length) {
+                el.innerHTML = `<div style="color:#64748b;font-size:13px;padding:8px">${escapeHtml(t('backups.empty'))}</div>`;
+                return;
+            }
+            const kindMap = { manual: 'backups.kindManual', auto: 'backups.kindAuto', scheduled: 'backups.kindScheduled', 'pre-restore': 'backups.kindPreRestore' };
+            const head = `<thead><tr style="background:#f8fafc;text-align:left">
+                <th style="padding:6px 8px;font-size:12px">${escapeHtml(t('backups.id'))}</th>
+                <th style="padding:6px 8px;font-size:12px">${escapeHtml(t('backups.createdAt'))}</th>
+                <th style="padding:6px 8px;font-size:12px">${escapeHtml(t('backups.kind'))}</th>
+                <th style="padding:6px 8px;font-size:12px">${escapeHtml(t('backups.size'))}</th>
+                <th style="padding:6px 8px;font-size:12px">${escapeHtml(t('backups.accounts'))}</th>
+                <th style="padding:6px 8px;font-size:12px">${escapeHtml(t('backups.note'))}</th>
+                <th style="padding:6px 8px;font-size:12px">${escapeHtml(t('backups.actions'))}</th>
+            </tr></thead>`;
+            const body = backups.map(b => {
+                const kindKey = kindMap[b.kind] || 'backups.kindManual';
+                const sizeKB = (b.size / 1024).toFixed(1) + ' KB';
+                return `<tr style="border-top:1px solid #f1f5f9">
+                    <td style="padding:6px 8px;font-size:12px;font-family:ui-monospace,monospace">${escapeHtml(b.id.slice(0, 16))}</td>
+                    <td style="padding:6px 8px;font-size:12px">${escapeHtml(fmtTime(b.createdAt))}</td>
+                    <td style="padding:6px 8px;font-size:12px">${escapeHtml(t(kindKey))}</td>
+                    <td style="padding:6px 8px;font-size:12px">${escapeHtml(sizeKB)}</td>
+                    <td style="padding:6px 8px;font-size:12px">${b.accountCnt || 0}</td>
+                    <td style="padding:6px 8px;font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(b.note || '-')}</td>
+                    <td style="padding:6px 8px;font-size:12px;white-space:nowrap">
+                        <button class="btn btn-sm btn-secondary" onclick="downloadBackup('${escapeHtml(b.id)}')" data-i18n="backups.download"></button>
+                        <button class="btn btn-sm btn-primary" onclick="restoreBackup('${escapeHtml(b.id)}')" data-i18n="backups.restore"></button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteBackup('${escapeHtml(b.id)}')" data-i18n="backups.delete"></button>
+                    </td>
+                </tr>`;
+            }).join('');
+            el.innerHTML = `<table style="width:100%;border-collapse:collapse">${head}<tbody>${body}</tbody></table>`;
+            applyTranslations();
+        }
+
+        async function createBackupNow() {
+            const note = prompt(t('backups.createNote'));
+            if (note === null) return;
+            try {
+                await fetch('/admin/api/backups', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-Admin-Password': password },
+                    body: JSON.stringify({ kind: 'manual', note })
+                });
+                alert(t('backups.createSuccess'));
+                loadBackups();
+            } catch (e) { alert('Error: ' + e.message); }
+        }
+
+        async function downloadBackup(id) {
+            window.open('/admin/api/backups/' + encodeURIComponent(id) + '/download?password=' + encodeURIComponent(password), '_blank');
+        }
+
+        async function restoreBackup(id) {
+            if (!confirm(t('backups.confirmRestore'))) return;
+            try {
+                await fetch('/admin/api/backups/' + encodeURIComponent(id) + '/restore', {
+                    method: 'POST',
+                    headers: { 'X-Admin-Password': password }
+                });
+                alert(t('backups.restoreSuccess'));
+                loadBackups();
+                loadAccounts();
+            } catch (e) { alert('Error: ' + e.message); }
+        }
+
+        async function deleteBackup(id) {
+            if (!confirm(t('backups.confirmDelete'))) return;
+            try {
+                await fetch('/admin/api/backups/' + encodeURIComponent(id), {
+                    method: 'DELETE',
+                    headers: { 'X-Admin-Password': password }
+                });
+                alert(t('backups.deleteSuccess'));
+                loadBackups();
+            } catch (e) { alert('Error: ' + e.message); }
+        }
+
+        async function saveBackupSchedule() {
+            const sched = {
+                enabled: document.getElementById('scheduleEnabled').checked,
+                cadence: document.getElementById('scheduleCadence').value,
+                keep: parseInt(document.getElementById('scheduleKeep').value, 10)
+            };
+            try {
+                await fetch('/admin/api/backups/schedule', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-Admin-Password': password },
+                    body: JSON.stringify(sched)
+                });
+                alert(t('common.saved'));
+            } catch (e) { alert('Error: ' + e.message); }
+        }
+
+        async function uploadBackup() {
+            const input = document.getElementById('backupFileInput');
+            if (!input.files.length) { alert('No file selected'); return; }
+            const file = input.files[0];
+            const formData = new FormData();
+            formData.append('file', file);
+            try {
+                await fetch('/admin/api/backups/restore', {
+                    method: 'POST',
+                    headers: { 'X-Admin-Password': password },
+                    body: formData
+                });
+                alert(t('backups.restoreSuccess'));
+                loadBackups();
+                loadAccounts();
+            } catch (e) { alert('Error: ' + e.message); }
+        }
+
+        function startBackups() {
+            loadBackups();
+            loadBackupSchedule();
+        }
+        function stopBackups() { /* no-op */ }
+
+        // ========== Alerts ==========
+        async function loadAlerts() {
+            const res = await fetch(`/admin/api/alerts?password=${encodeURIComponent(password)}`);
+            const data = await res.json();
+            const rules = data.rules || [];
+            const html = rules.length === 0 ? `<div style="padding:12px;color:#64748b">${t('alerts.noRules')}</div>` :
+                rules.map(r => `
+                    <div style="padding:12px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center">
+                        <div>
+                            <div style="font-weight:600">${escapeHtml(r.name)}</div>
+                            <div style="font-size:12px;color:#64748b;margin-top:4px">
+                                ${r.condition.type} · ${r.condition.target || 'global'} · threshold: ${r.condition.threshold}
+                            </div>
+                        </div>
+                        <div style="display:flex;gap:8px;align-items:center">
+                            <label class="switch"><input type="checkbox" ${r.enabled ? 'checked' : ''} onchange="toggleAlert('${r.id}', this.checked)"><span class="slider"></span></label>
+                            <button class="btn btn-sm" onclick="testAlert('${r.id}')">${t('alerts.test')}</button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteAlert('${r.id}')">${t('common.delete')}</button>
+                        </div>
+                    </div>
+                `).join('');
+            document.getElementById('alertsList').innerHTML = html;
+        }
+
+        async function loadAlertsHistory() {
+            const res = await fetch(`/admin/api/alerts/history?password=${encodeURIComponent(password)}&limit=50`);
+            const data = await res.json();
+            const history = data.history || [];
+            const html = history.length === 0 ? `<div style="padding:12px;color:#64748b">${t('alerts.noHistory')}</div>` :
+                history.map(h => `
+                    <div style="padding:12px;border-bottom:1px solid #e2e8f0">
+                        <div style="font-weight:600">${escapeHtml(h.rule_name)}</div>
+                        <div style="font-size:12px;color:#64748b;margin-top:4px">${h.condition}</div>
+                        <div style="font-size:12px;color:#64748b">Value: ${h.value.toFixed(2)} · ${new Date(h.fired_at * 1000).toLocaleString()}</div>
+                    </div>
+                `).join('');
+            document.getElementById('alertsHistory').innerHTML = html;
+        }
+
+        function openAlertModal(ruleId = null) {
+            alert('Alert rule editor not yet implemented');
+        }
+
+        async function toggleAlert(id, enabled) {
+            const res = await fetch(`/admin/api/alerts/${id}?password=${encodeURIComponent(password)}`);
+            const data = await res.json();
+            const rule = data.rule;
+            rule.enabled = enabled;
+            await fetch(`/admin/api/alerts/${id}?password=${encodeURIComponent(password)}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(rule)
+            });
+            loadAlerts();
+        }
+
+        async function deleteAlert(id) {
+            if (!confirm(t('alerts.confirmDelete'))) return;
+            await fetch(`/admin/api/alerts/${id}?password=${encodeURIComponent(password)}`, { method: 'DELETE' });
+            loadAlerts();
+        }
+
+        async function testAlert(id) {
+            const res = await fetch(`/admin/api/alerts/${id}/test?password=${encodeURIComponent(password)}`, { method: 'POST' });
+            const data = await res.json();
+            alert(`Triggered: ${data.triggered}\nValue: ${data.value.toFixed(2)}\nThreshold: ${data.threshold}`);
+        }
+
+        function startAlerts() {
+            loadAlerts();
+            loadAlertsHistory();
+        }
+        function stopAlerts() { /* no-op */ }
     </script>
 </body>
 
