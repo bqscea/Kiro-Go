@@ -1282,6 +1282,8 @@
                 'settings.modelAliasFrom': '客户端模型 (From)',
                 'settings.modelAliasTo': '内部模型 (To)',
                 'settings.modelAliasNote': '备注',
+                'settings.modelAliasBindKeys': '绑定 Key（留空 = 全部）',
+                'settings.modelAliasNoKeys': '未配置 ApiKey',
                 'settings.modelAliasSaved': '模型别名已保存',
                 'settings.usageSettings': '用量控制',
                 'settings.allowOverUsage': '允许超额使用',
@@ -1616,6 +1618,8 @@
                 'settings.modelAliasFrom': 'Client Model (From)',
                 'settings.modelAliasTo': 'Internal Model (To)',
                 'settings.modelAliasNote': 'Note',
+                'settings.modelAliasBindKeys': 'Bind Keys (empty = all)',
+                'settings.modelAliasNoKeys': 'No API keys configured',
                 'settings.modelAliasSaved': 'Model aliases saved',
                 'settings.usageSettings': 'Usage Control',
                 'settings.allowOverUsage': 'Allow Over-Usage',
@@ -2858,6 +2862,7 @@
                 const d = await res.json();
                 modelAliasesData = (d.aliases || []).map(a => ({
                     from: a.from || '', to: a.to || '', enabled: a.enabled !== false, note: a.note || '',
+                    keyIds: Array.isArray(a.keyIds) ? a.keyIds.slice() : [],
                 }));
             } catch (e) {
                 modelAliasesData = [];
@@ -2871,25 +2876,47 @@
                 container.innerHTML = '<p style="color:#94a3b8;font-size:12px;padding:8px 0">—</p>';
                 return;
             }
-            const header = '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 60px 36px;gap:6px;padding:0 6px 4px;font-size:11px;color:#64748b;font-weight:600">' +
+            // 收集当前已配置的 API Key 列表，用于复选框渲染（依赖 apiKeysData 已加载）
+            const keyOptions = (apiKeysData || []).filter(k => k.id).map(k => ({
+                id: k.id,
+                label: (k.name || '(unnamed)') + ' / ' + String(k.id).slice(0, 6),
+            }));
+            const header = '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1.4fr 60px 36px;gap:6px;padding:0 6px 4px;font-size:11px;color:#64748b;font-weight:600">' +
                 '<div>' + t('settings.modelAliasFrom') + '</div>' +
                 '<div>' + t('settings.modelAliasTo') + '</div>' +
                 '<div>' + t('settings.modelAliasNote') + '</div>' +
+                '<div>' + t('settings.modelAliasBindKeys') + '</div>' +
                 '<div>' + t('settings.apiKeyEnabled') + '</div>' +
                 '<div></div>' +
                 '</div>';
-            container.innerHTML = header + modelAliasesData.map((a, i) =>
-                '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 60px 36px;gap:6px;align-items:center;padding:6px;border:1px solid #e2e8f0;border-radius:6px;margin-bottom:6px;background:#f8fafc">' +
-                '<input type="text" value="' + escapeAttr(a.from) + '" oninput="updateModelAliasField(' + i + ',\'from\',this.value)" placeholder="gpt-4o" style="padding:4px 6px;font-size:12px;border:1px solid #e2e8f0;border-radius:4px;font-family:monospace">' +
-                '<input type="text" value="' + escapeAttr(a.to) + '" oninput="updateModelAliasField(' + i + ',\'to\',this.value)" placeholder="claude-sonnet-4-6" style="padding:4px 6px;font-size:12px;border:1px solid #e2e8f0;border-radius:4px;font-family:monospace">' +
-                '<input type="text" value="' + escapeAttr(a.note) + '" oninput="updateModelAliasField(' + i + ',\'note\',this.value)" placeholder="' + t('settings.modelAliasNote') + '" style="padding:4px 6px;font-size:12px;border:1px solid #e2e8f0;border-radius:4px">' +
-                '<label class="switch" style="margin:0"><input type="checkbox" ' + (a.enabled ? 'checked' : '') + ' onchange="updateModelAliasField(' + i + ',\'enabled\',this.checked)"><span class="slider"></span></label>' +
-                '<button class="btn btn-sm btn-danger" onclick="removeModelAliasRow(' + i + ')" style="padding:3px 6px;font-size:11px">×</button>' +
-                '</div>'
-            ).join('');
+            container.innerHTML = header + modelAliasesData.map((a, i) => {
+                const bound = new Set((a.keyIds || []).map(String));
+                let bindCell;
+                if (keyOptions.length === 0) {
+                    bindCell = '<div style="font-size:11px;color:#94a3b8;padding:2px 4px">' + t('settings.modelAliasNoKeys') + '</div>';
+                } else {
+                    bindCell = '<div style="display:flex;flex-wrap:wrap;gap:4px 8px;font-size:11px;max-height:64px;overflow:auto;padding:2px 4px;border:1px solid #e2e8f0;border-radius:4px;background:#fff">' +
+                        keyOptions.map(o => {
+                            const checked = bound.has(o.id) ? 'checked' : '';
+                            return '<label style="display:inline-flex;align-items:center;gap:3px;cursor:pointer">' +
+                                '<input type="checkbox" ' + checked + ' onchange="toggleModelAliasKeyId(' + i + ',\'' + escapeAttr(o.id) + '\',this.checked)">' +
+                                '<span>' + escapeAttr(o.label) + '</span>' +
+                                '</label>';
+                        }).join('') +
+                        '</div>';
+                }
+                return '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1.4fr 60px 36px;gap:6px;align-items:center;padding:6px;border:1px solid #e2e8f0;border-radius:6px;margin-bottom:6px;background:#f8fafc">' +
+                    '<input type="text" value="' + escapeAttr(a.from) + '" oninput="updateModelAliasField(' + i + ',\'from\',this.value)" placeholder="gpt-4o" style="padding:4px 6px;font-size:12px;border:1px solid #e2e8f0;border-radius:4px;font-family:monospace">' +
+                    '<input type="text" value="' + escapeAttr(a.to) + '" oninput="updateModelAliasField(' + i + ',\'to\',this.value)" placeholder="claude-sonnet-4-6" style="padding:4px 6px;font-size:12px;border:1px solid #e2e8f0;border-radius:4px;font-family:monospace">' +
+                    '<input type="text" value="' + escapeAttr(a.note) + '" oninput="updateModelAliasField(' + i + ',\'note\',this.value)" placeholder="' + t('settings.modelAliasNote') + '" style="padding:4px 6px;font-size:12px;border:1px solid #e2e8f0;border-radius:4px">' +
+                    bindCell +
+                    '<label class="switch" style="margin:0"><input type="checkbox" ' + (a.enabled ? 'checked' : '') + ' onchange="updateModelAliasField(' + i + ',\'enabled\',this.checked)"><span class="slider"></span></label>' +
+                    '<button class="btn btn-sm btn-danger" onclick="removeModelAliasRow(' + i + ')" style="padding:3px 6px;font-size:11px">×</button>' +
+                    '</div>';
+            }).join('');
         }
         function addModelAliasRow() {
-            modelAliasesData.push({ from: '', to: '', enabled: true, note: '' });
+            modelAliasesData.push({ from: '', to: '', enabled: true, note: '', keyIds: [] });
             renderModelAliases();
         }
         function removeModelAliasRow(i) {
@@ -2900,9 +2927,21 @@
             if (!modelAliasesData[i]) return;
             modelAliasesData[i][field] = value;
         }
+        function toggleModelAliasKeyId(i, keyId, checked) {
+            if (!modelAliasesData[i]) return;
+            const cur = Array.isArray(modelAliasesData[i].keyIds) ? modelAliasesData[i].keyIds : [];
+            const set = new Set(cur.map(String));
+            if (checked) {
+                set.add(String(keyId));
+            } else {
+                set.delete(String(keyId));
+            }
+            modelAliasesData[i].keyIds = Array.from(set);
+        }
         async function saveModelAliases() {
             const seen = {};
             const cleaned = [];
+            const validKeyIds = new Set((apiKeysData || []).map(k => k.id).filter(Boolean));
             for (const a of modelAliasesData || []) {
                 const from = (a.from || '').trim();
                 const to = (a.to || '').trim();
@@ -2910,7 +2949,16 @@
                 const k = from.toLowerCase();
                 if (seen[k]) { alert(t('common.failed') + ': duplicate from ' + from); return; }
                 seen[k] = true;
-                cleaned.push({ from, to, enabled: a.enabled !== false, note: (a.note || '').trim() });
+                const ids = Array.isArray(a.keyIds) ? a.keyIds : [];
+                const cleanedIds = Array.from(new Set(ids
+                    .map(s => String(s || '').trim())
+                    .filter(s => s && validKeyIds.has(s))));
+                cleaned.push({
+                    from, to,
+                    enabled: a.enabled !== false,
+                    note: (a.note || '').trim(),
+                    keyIds: cleanedIds,
+                });
             }
             const r = await fetch('/admin/api/model-aliases', {
                 method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Admin-Password': password },

@@ -150,10 +150,14 @@ type GroupPolicy struct {
 // Match is case-insensitive on the trimmed `From`. Thinking suffix on the
 // incoming model id is preserved across the mapping by the handler.
 type ModelAlias struct {
-	From    string `json:"from"`              // Client-facing model id (e.g. "gpt-4o")
-	To      string `json:"to"`                // Internal model id (e.g. "claude-sonnet-4-6")
-	Enabled bool   `json:"enabled"`           // Whether this alias is active
-	Note    string `json:"note,omitempty"`    // Free-form note
+	From    string `json:"from"`           // Client-facing model id (e.g. "gpt-4o")
+	To      string `json:"to"`             // Internal model id (e.g. "claude-sonnet-4-6")
+	Enabled bool   `json:"enabled"`        // Whether this alias is active
+	Note    string `json:"note,omitempty"` // Free-form note
+
+	// KeyIDs binds this alias to specific ApiKeyEntry.ID values.
+	// Empty = global alias (applies to all callers, including legacy root ApiKey and unauthenticated mode).
+	KeyIDs []string `json:"keyIds,omitempty"`
 }
 
 // Config represents the global application configuration.
@@ -596,6 +600,7 @@ func GroupAllowsModel(groupName, model string) bool {
 }
 
 // GetModelAliases returns a copy of all configured model aliases.
+// KeyIDs slices are deep-copied so callers cannot mutate the in-memory binding list.
 func GetModelAliases() []ModelAlias {
 	cfgLock.RLock()
 	defer cfgLock.RUnlock()
@@ -603,7 +608,14 @@ func GetModelAliases() []ModelAlias {
 		return nil
 	}
 	out := make([]ModelAlias, len(cfg.ModelAliases))
-	copy(out, cfg.ModelAliases)
+	for i, a := range cfg.ModelAliases {
+		out[i] = a
+		if len(a.KeyIDs) > 0 {
+			out[i].KeyIDs = append([]string(nil), a.KeyIDs...)
+		} else {
+			out[i].KeyIDs = nil
+		}
+	}
 	return out
 }
 
@@ -615,10 +627,24 @@ func UpdateModelAliases(aliases []ModelAlias) error {
 	return Save()
 }
 
-// ResolveModelAlias maps a client-facing model name to its internal target.
-// Returns the input unchanged when no enabled alias matches. Match is
-// case-insensitive on the trimmed `From` field.
+// ResolveModelAlias is a backward-compatible wrapper that resolves an alias
+// without considering any caller-bound API key.
 func ResolveModelAlias(model string) string {
+	return ResolveModelAliasFor(model, "")
+}
+
+// ResolveModelAliasFor maps a client-facing model name to its internal target,
+// optionally honoring per-key alias bindings.
+//
+// Resolution order for enabled aliases whose `From` matches (case-insensitive, trimmed):
+//  1. The first alias whose KeyIDs contains keyID (only when keyID != "").
+//  2. Otherwise, the first global alias (KeyIDs empty).
+//  3. Otherwise, the input model is returned unchanged.
+//
+// The full list is scanned once for a key-bound match before falling back to a
+// global match, so iteration order does not cause an early global hit to mask a
+// later key-bound one.
+func ResolveModelAliasFor(model, keyID string) string {
 	cfgLock.RLock()
 	defer cfgLock.RUnlock()
 	if cfg == nil {
@@ -628,16 +654,34 @@ func ResolveModelAlias(model string) string {
 	if m == "" {
 		return model
 	}
-	for _, a := range cfg.ModelAliases {
+
+	var globalHit *ModelAlias
+	for i := range cfg.ModelAliases {
+		a := &cfg.ModelAliases[i]
 		if !a.Enabled {
 			continue
 		}
-		if strings.EqualFold(strings.TrimSpace(a.From), m) {
-			to := strings.TrimSpace(a.To)
-			if to != "" {
-				return to
-			}
+		if !strings.EqualFold(strings.TrimSpace(a.From), m) {
+			continue
 		}
+		to := strings.TrimSpace(a.To)
+		if to == "" {
+			continue
+		}
+		if keyID != "" && len(a.KeyIDs) > 0 {
+			for _, id := range a.KeyIDs {
+				if strings.TrimSpace(id) == keyID {
+					return to
+				}
+			}
+			continue
+		}
+		if len(a.KeyIDs) == 0 && globalHit == nil {
+			globalHit = a
+		}
+	}
+	if globalHit != nil {
+		return strings.TrimSpace(globalHit.To)
 	}
 	return model
 }

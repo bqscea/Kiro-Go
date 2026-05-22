@@ -524,18 +524,43 @@ func (h *Handler) handleModels(w http.ResponseWriter, r *http.Request) {
 		buildModelInfo("gpt-4", "kiro-proxy", true),
 	)
 
+	// 先做一次鉴权，把命中的 ApiKey entry 写入 ctx；
+	// 用于按 keyID 过滤「按 Key 绑定」的模型别名。
+	// 即使是旧版根 ApiKey 命中或未启用鉴权，aliasKeyID 仍为空 → 仅展开全局别名。
+	var aliasKeyID string
+	if config.IsApiKeyRequired() {
+		_ = h.validateApiKey(r)
+		if entry := matchedApiKeyEntry(r); entry != nil {
+			aliasKeyID = entry.ID
+		}
+	}
+
 	// 暴露用户配置的模型别名（owned_by=alias，避免与真实模型冲突）
+	// 仅暴露：全局别名（KeyIDs 为空）；或绑定到当前命中 Key 的别名。
 	for _, alias := range config.GetModelAliases() {
 		if !alias.Enabled || strings.TrimSpace(alias.From) == "" {
 			continue
+		}
+		if len(alias.KeyIDs) > 0 {
+			if aliasKeyID == "" {
+				continue
+			}
+			matched := false
+			for _, id := range alias.KeyIDs {
+				if strings.TrimSpace(id) == aliasKeyID {
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				continue
+			}
 		}
 		models = append(models, buildModelInfo(alias.From, "alias", true))
 	}
 
 	// 按 API Key 允许的 group + group policy 缩水模型列表
 	if config.IsApiKeyRequired() {
-		// 即使无 entry（旧 ApiKey）也走一遍策略过滤，确保白名单一致
-		_ = h.validateApiKey(r)
 		allowedGroups := h.resolveAllowedGroups(r)
 		models = filterModelsByPolicies(models, allowedGroups, thinkingSuffix)
 	}
@@ -950,8 +975,12 @@ func (h *Handler) handleClaudeMessagesInternal(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	// 模型别名映射（保留 thinking 后缀）
-	req.Model = applyModelAlias(req.Model)
+	// 模型别名映射（保留 thinking 后缀；优先使用绑定到当前 Key 的别名）
+	var aliasKeyID string
+	if entry := matchedApiKeyEntry(r); entry != nil {
+		aliasKeyID = entry.ID
+	}
+	req.Model = applyModelAliasFor(req.Model, aliasKeyID)
 
 	// 获取账号（按模型过滤 + 按 API Key 允许的 group 过滤）
 	actualModel, _ := ParseModelAndThinking(req.Model, config.GetThinkingConfig().Suffix)
@@ -1628,8 +1657,12 @@ func (h *Handler) handleOpenAIChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 模型别名映射（保留 thinking 后缀）
-	req.Model = applyModelAlias(req.Model)
+	// 模型别名映射（保留 thinking 后缀；优先使用绑定到当前 Key 的别名）
+	var aliasKeyID string
+	if entry := matchedApiKeyEntry(r); entry != nil {
+		aliasKeyID = entry.ID
+	}
+	req.Model = applyModelAliasFor(req.Model, aliasKeyID)
 
 	actualModel, _ := ParseModelAndThinking(req.Model, config.GetThinkingConfig().Suffix)
 	allowedGroups := h.resolveAllowedGroups(r)
@@ -3661,6 +3694,16 @@ func (h *Handler) apiUpdateModelAliases(w http.ResponseWriter, r *http.Request) 
 		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid JSON"})
 		return
 	}
+
+	// 已有 ApiKey ID 集合：用于过滤别名 KeyIDs 中的过期 / 未知绑定，
+	// 让前端可以静默清掉旧绑定而不必显式更新。
+	validKeyIDs := make(map[string]bool)
+	for _, k := range config.GetApiKeys() {
+		if id := strings.TrimSpace(k.ID); id != "" {
+			validKeyIDs[id] = true
+		}
+	}
+
 	cleaned := make([]config.ModelAlias, 0, len(req.Aliases))
 	seen := make(map[string]bool)
 	for _, a := range req.Aliases {
@@ -3676,11 +3719,30 @@ func (h *Handler) apiUpdateModelAliases(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 		seen[key] = true
+
+		// 清洗 KeyIDs：Trim、去空、去重，并丢弃不存在于 ApiKeys 表中的 ID
+		var keyIDs []string
+		if len(a.KeyIDs) > 0 {
+			seenID := make(map[string]bool, len(a.KeyIDs))
+			for _, raw := range a.KeyIDs {
+				id := strings.TrimSpace(raw)
+				if id == "" || seenID[id] {
+					continue
+				}
+				if !validKeyIDs[id] {
+					continue
+				}
+				seenID[id] = true
+				keyIDs = append(keyIDs, id)
+			}
+		}
+
 		cleaned = append(cleaned, config.ModelAlias{
 			From:    from,
 			To:      to,
 			Enabled: a.Enabled,
 			Note:    strings.TrimSpace(a.Note),
+			KeyIDs:  keyIDs,
 		})
 	}
 	if err := config.UpdateModelAliases(cleaned); err != nil {
@@ -3692,8 +3754,15 @@ func (h *Handler) apiUpdateModelAliases(w http.ResponseWriter, r *http.Request) 
 }
 
 // applyModelAlias 在 ParseModelAndThinking 之前对模型名做别名解析。
-// 保留 thinking 后缀：alias 仅匹配去掉 thinking 后缀的部分。
+// 保留旧签名作 wrapper；不带 keyID → 仅命中全局别名。
 func applyModelAlias(model string) string {
+	return applyModelAliasFor(model, "")
+}
+
+// applyModelAliasFor 等价于 applyModelAlias，但允许传入命中多 Key 表的 entry ID，
+// 优先返回绑定到该 Key 的别名；若无绑定命中再退回全局别名。
+// 保留 thinking 后缀：alias 仅匹配去掉 thinking 后缀的部分。
+func applyModelAliasFor(model, keyID string) string {
 	suffix := config.GetThinkingConfig().Suffix
 	hasThinking := suffix != "" && strings.HasSuffix(strings.ToLower(model), strings.ToLower(suffix))
 	base := model
@@ -3704,7 +3773,7 @@ func applyModelAlias(model string) string {
 			base = model[:len(model)-len(suffix)]
 		}
 	}
-	resolved := config.ResolveModelAlias(base)
+	resolved := config.ResolveModelAliasFor(base, keyID)
 	if hasThinking {
 		return resolved + suffix
 	}
