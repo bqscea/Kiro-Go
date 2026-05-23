@@ -4761,7 +4761,9 @@
 
         // ========== Requests ==========
         async function loadRequests() {
-            const res = await fetch(`/admin/api/observe/recent-requests?password=${encodeURIComponent(password)}&limit=200`);
+            const res = await fetch('/admin/api/observe/recent-requests?limit=200', {
+                headers: { 'X-Admin-Password': password }
+            });
             const data = await res.json();
             const reqs = data.requests || [];
             const html = reqs.length === 0 ? `<div style="padding:12px;color:#64748b">${t('requests.empty')}</div>` :
