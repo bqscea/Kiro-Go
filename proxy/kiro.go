@@ -107,11 +107,17 @@ func ResolveAccountProxyURL(account *config.Account) string {
 // buildKiroTransport constructs an HTTP Transport with optional outbound proxy support.
 func buildKiroTransport(proxyURL string) *http.Transport {
 	t := &http.Transport{
-		MaxIdleConns:        1000, // 支持 100 账号 × 10 并发
-		MaxIdleConnsPerHost: 200,  // 单 host 最大并发（Kiro API 限速前）
-		IdleConnTimeout:     90 * time.Second,
-		DisableCompression:  false,
-		ForceAttemptHTTP2:   true,
+		MaxIdleConns:          1000, // 全局空闲连接池
+		MaxIdleConnsPerHost:   200,  // 单 host 最大空闲连接
+		MaxConnsPerHost:       0,    // 0 = 无限制（由 Kiro API 限速）
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		DisableCompression:    false,
+		ForceAttemptHTTP2:     true,
+		// 连接复用优化
+		DisableKeepAlives: false,
+		MaxResponseHeaderBytes: 10 << 20, // 10MB
 	}
 	if proxyURL != "" {
 		if u, err := url.Parse(proxyURL); err == nil {
