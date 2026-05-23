@@ -269,13 +269,40 @@ func (p *AccountPool) RecordError(id string, isQuotaError bool) int {
 	count := p.errorCounts[id]
 
 	if isQuotaError {
-		// 配额错误，冷却 1 小时
-		p.cooldowns[id] = time.Now().Add(time.Hour)
+		// 配额错误，冷却至重置日期
+		cooldownUntil := p.calculateQuotaCooldown(id)
+		p.cooldowns[id] = cooldownUntil
 	} else if count >= 3 {
 		// 连续 3 次错误，冷却 1 分钟
 		p.cooldowns[id] = time.Now().Add(time.Minute)
 	}
 	return count
+}
+
+// calculateQuotaCooldown 计算配额耗尽的冷却时间（至重置日期）
+func (p *AccountPool) calculateQuotaCooldown(accountID string) time.Time {
+	// 查找账号的重置日期
+	var resetDate string
+	for _, acc := range p.accounts {
+		if acc.ID == accountID {
+			resetDate = acc.NextResetDate
+			break
+		}
+	}
+
+	// 解析重置日期（格式：YYYY-MM-DD）
+	if resetDate != "" {
+		if t, err := time.Parse("2006-01-02", resetDate); err == nil {
+			// 重置日期 + 1 天（确保跨过重置点）
+			resetTime := t.Add(24 * time.Hour)
+			if resetTime.After(time.Now()) {
+				return resetTime
+			}
+		}
+	}
+
+	// 兜底：重置日期无效或已过期，冷却 24 小时
+	return time.Now().Add(24 * time.Hour)
 }
 
 // UpdateToken 更新账号 Token
