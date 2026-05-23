@@ -14,6 +14,9 @@ import (
 const overageFrequencyScale = 10
 const tokenRefreshSkewSeconds int64 = 120
 
+// 账号预占锁时长（防止并发请求选中同一账号）
+const accountReservationDuration = 5 * time.Second
+
 // AccountPool 账号池
 type AccountPool struct {
 	mu            sync.RWMutex
@@ -71,8 +74,80 @@ func (p *AccountPool) Reload() {
 	p.totalAccounts = len(enabled)
 }
 
-// GetNext 获取下一个可用账号（加权轮询）
+// GetNext 获取下一个可用账号（根据 LoadBalancingMode 选择策略）
 func (p *AccountPool) GetNext() *config.Account {
+	mode := config.GetLoadBalancingMode()
+	if mode == "priority" {
+		return p.getNextPriority()
+	}
+	return p.getNextBalanced()
+}
+
+// getNextPriority 按优先级顺序选择账号（Weight 越小优先级越高）
+func (p *AccountPool) getNextPriority() *config.Account {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	if len(p.accounts) == 0 {
+		return nil
+	}
+
+	// 去重并按优先级排序
+	uniqueAccounts := p.getUniqueSortedAccounts()
+	allowOverUsage := config.GetAllowOverUsage()
+	now := time.Now()
+
+	// 按优先级顺序尝试
+	for _, acc := range uniqueAccounts {
+		// 跳过冷却中的账号
+		if cooldown, ok := p.cooldowns[acc.ID]; ok && now.Before(cooldown) {
+			continue
+		}
+
+		// 跳过即将过期的 Token
+		if acc.ExpiresAt > 0 && time.Now().Unix() > acc.ExpiresAt-tokenRefreshSkewSeconds {
+			continue
+		}
+
+		// 跳过额度已用尽的账号（账号级 AllowOverage 或全局 AllowOverUsage 可放行）
+		if isOverUsageLimit(acc) && !acc.AllowOverage && !allowOverUsage {
+			continue
+		}
+
+		p.mu.RUnlock()
+		p.markInUse(acc.ID)
+		p.mu.RLock()
+		return &acc
+	}
+
+	// 无可用账号，返回冷却时间最短的（排除额度用尽的，除非允许超额）
+	var best *config.Account
+	var earliest time.Time
+	for i := range uniqueAccounts {
+		acc := &uniqueAccounts[i]
+		// 额度用尽的账号不作为 fallback（除非账号级或全局允许超额）
+		if isOverUsageLimit(*acc) && !acc.AllowOverage && !allowOverUsage {
+			continue
+		}
+		if cooldown, ok := p.cooldowns[acc.ID]; ok {
+			if best == nil || cooldown.Before(earliest) {
+				best = acc
+				earliest = cooldown
+			}
+		} else {
+			return acc
+		}
+	}
+	if best != nil {
+		p.mu.RUnlock()
+		p.markInUse(best.ID)
+		p.mu.RLock()
+	}
+	return best
+}
+
+// getNextBalanced 加权轮询选择账号（原 GetNext 逻辑）
+func (p *AccountPool) getNextBalanced() *config.Account {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
@@ -112,6 +187,9 @@ func (p *AccountPool) GetNext() *config.Account {
 			continue
 		}
 
+		p.mu.RUnlock()
+		p.markInUse(acc.ID)
+		p.mu.RLock()
 		return acc
 	}
 
@@ -134,6 +212,30 @@ func (p *AccountPool) GetNext() *config.Account {
 		}
 	}
 	return best
+}
+
+// getUniqueSortedAccounts 去重并按优先级排序（Weight 越小优先级越高）
+func (p *AccountPool) getUniqueSortedAccounts() []config.Account {
+	seen := make(map[string]bool)
+	var unique []config.Account
+	for _, acc := range p.accounts {
+		if !seen[acc.ID] {
+			seen[acc.ID] = true
+			unique = append(unique, acc)
+		}
+	}
+	sort.Slice(unique, func(i, j int) bool {
+		wi := effectiveWeight(unique[i].Weight)
+		wj := effectiveWeight(unique[j].Weight)
+		if isOverUsageLimit(unique[i]) && unique[i].AllowOverage {
+			wi = effectiveOverageWeight(unique[i].OverageWeight)
+		}
+		if isOverUsageLimit(unique[j]) && unique[j].AllowOverage {
+			wj = effectiveOverageWeight(unique[j].OverageWeight)
+		}
+		return wi < wj // 小权重 = 高优先级
+	})
+	return unique
 }
 
 // SetModelList 缓存账号支持的模型集合（由 handler 在刷新后调用）
@@ -216,6 +318,9 @@ func (p *AccountPool) GetNextForModel(model string) *config.Account {
 			seen[acc.ID] = true
 			continue
 		}
+		p.mu.RUnlock()
+		p.markInUse(acc.ID)
+		p.mu.RLock()
 		return acc
 	}
 
@@ -239,8 +344,16 @@ func (p *AccountPool) GetNextForModel(model string) *config.Account {
 				earliest = cooldown
 			}
 		} else {
+			p.mu.RUnlock()
+			p.markInUse(acc.ID)
+			p.mu.RLock()
 			return acc
 		}
+	}
+	if best != nil {
+		p.mu.RUnlock()
+		p.markInUse(best.ID)
+		p.mu.RLock()
 	}
 	return best
 }
@@ -255,6 +368,13 @@ func (p *AccountPool) GetByID(id string) *config.Account {
 		}
 	}
 	return nil
+}
+
+// markInUse 标记账号为使用中（设置短期cooldown防止并发请求重复选中）
+func (p *AccountPool) markInUse(id string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.cooldowns[id] = time.Now().Add(accountReservationDuration)
 }
 
 // RecordSuccess 记录请求成功，清除冷却
@@ -600,6 +720,9 @@ func (p *AccountPool) GetNextForModelAndGroupsExcluding(model string, allowedGro
 			seen[acc.ID] = true
 			continue
 		}
+		p.mu.RUnlock()
+		p.markInUse(acc.ID)
+		p.mu.RLock()
 		return acc
 	}
 
@@ -629,8 +752,16 @@ func (p *AccountPool) GetNextForModelAndGroupsExcluding(model string, allowedGro
 				earliest = cooldown
 			}
 		} else {
+			p.mu.RUnlock()
+			p.markInUse(acc.ID)
+			p.mu.RLock()
 			return acc
 		}
+	}
+	if best != nil {
+		p.mu.RUnlock()
+		p.markInUse(best.ID)
+		p.mu.RLock()
 	}
 	return best
 }

@@ -28,25 +28,44 @@ type kiroEndpoint struct {
 	Name      string
 }
 
-var kiroEndpoints = []kiroEndpoint{
-	{
-		URL:       "https://q.us-east-1.amazonaws.com/generateAssistantResponse",
-		Origin:    "AI_EDITOR",
-		AmzTarget: "",
-		Name:      "Kiro IDE",
-	},
-	{
-		URL:       "https://codewhisperer.us-east-1.amazonaws.com/generateAssistantResponse",
-		Origin:    "AI_EDITOR",
-		AmzTarget: "AmazonCodeWhispererStreamingService.GenerateAssistantResponse",
-		Name:      "CodeWhisperer",
-	},
-	{
-		URL:       "https://q.us-east-1.amazonaws.com/generateAssistantResponse",
-		Origin:    "AI_EDITOR",
-		AmzTarget: "AmazonQDeveloperStreamingService.SendMessage",
-		Name:      "AmazonQ",
-	},
+// BuildKiroEndpoints constructs endpoint list for the given region.
+// Falls back to us-east-1 if region is empty.
+func BuildKiroEndpoints(region string) []kiroEndpoint {
+	if region == "" {
+		region = "us-east-1"
+	}
+	return []kiroEndpoint{
+		{
+			URL:       fmt.Sprintf("https://q.%s.amazonaws.com/generateAssistantResponse", region),
+			Origin:    "AI_EDITOR",
+			AmzTarget: "",
+			Name:      "Kiro IDE",
+		},
+		{
+			URL:       fmt.Sprintf("https://codewhisperer.%s.amazonaws.com/generateAssistantResponse", region),
+			Origin:    "AI_EDITOR",
+			AmzTarget: "AmazonCodeWhispererStreamingService.GenerateAssistantResponse",
+			Name:      "CodeWhisperer",
+		},
+		{
+			URL:       fmt.Sprintf("https://q.%s.amazonaws.com/generateAssistantResponse", region),
+			Origin:    "AI_EDITOR",
+			AmzTarget: "AmazonQDeveloperStreamingService.SendMessage",
+			Name:      "AmazonQ",
+		},
+	}
+}
+
+// ResolveApiRegion returns the effective API region for an account.
+// Falls back to account.Region if ApiRegion is empty, then to us-east-1.
+func ResolveApiRegion(account *config.Account) string {
+	if account != nil && account.ApiRegion != "" {
+		return account.ApiRegion
+	}
+	if account != nil && account.Region != "" {
+		return account.Region
+	}
+	return "us-east-1"
 }
 
 // Global HTTP clients, swappable at runtime to apply proxy reconfiguration without restart.
@@ -249,8 +268,10 @@ type KiroStreamCallback struct {
 // ==================== API Call ====================
 
 // getSortedEndpoints returns endpoints ordered by user preference, with optional fallback.
-func getSortedEndpoints(preferred string) []kiroEndpoint {
+// Dynamically builds endpoints for the account's API region.
+func getSortedEndpoints(account *config.Account, preferred string) []kiroEndpoint {
 	fallback := config.GetEndpointFallback()
+	endpoints := BuildKiroEndpoints(ResolveApiRegion(account))
 
 	var primary int
 	switch preferred {
@@ -262,17 +283,17 @@ func getSortedEndpoints(preferred string) []kiroEndpoint {
 		primary = 2
 	default:
 		// "auto": Kiro first, then fallback to others
-		return []kiroEndpoint{kiroEndpoints[0], kiroEndpoints[1], kiroEndpoints[2]}
+		return []kiroEndpoint{endpoints[0], endpoints[1], endpoints[2]}
 	}
 
 	if !fallback {
 		// No fallback: only use the selected endpoint
-		return []kiroEndpoint{kiroEndpoints[primary]}
+		return []kiroEndpoint{endpoints[primary]}
 	}
 
 	// With fallback: selected first, then others in order
-	result := []kiroEndpoint{kiroEndpoints[primary]}
-	for i, ep := range kiroEndpoints {
+	result := []kiroEndpoint{endpoints[primary]}
+	for i, ep := range endpoints {
 		if i != primary {
 			result = append(result, ep)
 		}
@@ -318,7 +339,7 @@ func CallKiroAPI(account *config.Account, payload *KiroPayload, callback *KiroSt
 	}
 
 	// Build endpoint list ordered by configuration.
-	endpoints := getSortedEndpoints(config.GetPreferredEndpoint())
+	endpoints := getSortedEndpoints(account, config.GetPreferredEndpoint())
 
 	var lastErr error
 	for _, ep := range endpoints {

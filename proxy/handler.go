@@ -378,7 +378,7 @@ func (h *Handler) validateApiKey(r *http.Request) bool {
 		}
 		return false
 	}
-	return provided == expectedKey
+	return config.SecureCompareString(provided, expectedKey)
 }
 
 // enforceRateLimit 在 ServeHTTP 路由分发时对命中多 Key 表的请求做 RPM/RPD 限流。

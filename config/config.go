@@ -48,7 +48,8 @@ type Account struct {
 	ClientSecret string `json:"clientSecret,omitempty"` // OIDC client secret (for IdC auth)
 	AuthMethod   string `json:"authMethod"`             // Authentication method: "idc" (AWS IdC) or "social" (GitHub/Google)
 	Provider     string `json:"provider,omitempty"`     // Identity provider name (e.g., "BuilderId", "GitHub")
-	Region       string `json:"region"`                 // AWS region for OIDC endpoints
+	Region       string `json:"region"`                 // AWS region for OIDC endpoints (auth)
+	ApiRegion    string `json:"apiRegion,omitempty"`    // AWS region for Kiro API requests (falls back to Region if empty)
 	StartUrl     string `json:"startUrl,omitempty"`     // AWS SSO start URL
 	ExpiresAt    int64  `json:"expiresAt,omitempty"`    // Token expiration timestamp (Unix seconds)
 	MachineId    string `json:"machineId,omitempty"`    // UUID machine identifier for request tracking
@@ -206,6 +207,11 @@ type Config struct {
 	// usage quota has been exhausted. When enabled, the pool will not skip accounts
 	// solely because usageCurrent >= usageLimit.
 	AllowOverUsage bool `json:"allowOverUsage,omitempty"`
+
+	// LoadBalancingMode controls account selection strategy.
+	// "priority" (按优先级): tries accounts in priority order (lower Weight = higher priority), falls back on failure
+	// "balanced" (均衡分配): weighted round-robin distribution (default)
+	LoadBalancingMode string `json:"loadBalancingMode,omitempty"`
 
 	// Proxy configuration: optional outbound proxy for Kiro API requests
 	// Format: "socks5://host:port", "socks5://user:pass@host:port",
@@ -576,7 +582,7 @@ func FindApiKeyEntry(key string) *ApiKeyEntry {
 	}
 	for i := range cfg.ApiKeys {
 		e := &cfg.ApiKeys[i]
-		if e.Enabled && e.Key == key {
+		if e.Enabled && SecureCompareString(e.Key, key) {
 			out := *e
 			return &out
 		}
@@ -1057,6 +1063,24 @@ func UpdateAllowOverUsage(allow bool) error {
 	cfgLock.Lock()
 	defer cfgLock.Unlock()
 	cfg.AllowOverUsage = allow
+	return Save()
+}
+
+// GetLoadBalancingMode returns the load balancing mode. Defaults to "balanced".
+func GetLoadBalancingMode() string {
+	cfgLock.RLock()
+	defer cfgLock.RUnlock()
+	if cfg == nil || cfg.LoadBalancingMode == "" {
+		return "balanced"
+	}
+	return cfg.LoadBalancingMode
+}
+
+// UpdateLoadBalancingMode sets the load balancing mode and persists the change.
+func UpdateLoadBalancingMode(mode string) error {
+	cfgLock.Lock()
+	defer cfgLock.Unlock()
+	cfg.LoadBalancingMode = mode
 	return Save()
 }
 
