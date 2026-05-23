@@ -1442,7 +1442,7 @@ func (h *Handler) handleClaudeStream(w http.ResponseWriter, r *http.Request, acc
 		getObserveStore().RecordFailure(account.ID, model)
 		getObserveStore().RecordError(account.ID, account.Email, model, 0, err.Error())
 		getObserveStore().RecordRequest(account.ID, account.Email, model, 0, 0, 0, false)
-		h.pool.RecordError(account.ID, strings.Contains(err.Error(), "429") || strings.Contains(err.Error(), "quota"))
+		h.pool.RecordError(account.ID, isQuotaError(err))
 		h.autoSilentIfSuspended(account.ID, err)
 		h.checkOverageError(err, account.ID)
 		h.sendSSE(w, flusher, "error", map[string]interface{}{
@@ -1667,7 +1667,7 @@ func (h *Handler) handleClaudeNonStream(w http.ResponseWriter, r *http.Request, 
 		getObserveStore().RecordFailure(account.ID, model)
 		getObserveStore().RecordError(account.ID, account.Email, model, 0, err.Error())
 		getObserveStore().RecordRequest(account.ID, account.Email, model, 0, 0, 0, false)
-		h.pool.RecordError(account.ID, strings.Contains(err.Error(), "429"))
+		h.pool.RecordError(account.ID, isQuotaError(err))
 		h.autoSilentIfSuspended(account.ID, err)
 		h.checkOverageError(err, account.ID)
 		h.sendClaudeError(w, 500, "api_error", err.Error())
@@ -2128,7 +2128,7 @@ func (h *Handler) handleOpenAIStream(w http.ResponseWriter, r *http.Request, acc
 		getObserveStore().RecordFailure(account.ID, model)
 		getObserveStore().RecordError(account.ID, account.Email, model, 0, err.Error())
 		getObserveStore().RecordRequest(account.ID, account.Email, model, 0, 0, 0, false)
-		h.pool.RecordError(account.ID, strings.Contains(err.Error(), "429"))
+		h.pool.RecordError(account.ID, isQuotaError(err))
 		h.autoSilentIfSuspended(account.ID, err)
 		h.checkOverageError(err, account.ID)
 		return
@@ -2227,7 +2227,7 @@ func (h *Handler) handleOpenAINonStream(w http.ResponseWriter, r *http.Request, 
 		getObserveStore().RecordFailure(account.ID, model)
 		getObserveStore().RecordError(account.ID, account.Email, model, 0, err.Error())
 		getObserveStore().RecordRequest(account.ID, account.Email, model, 0, 0, 0, false)
-		h.pool.RecordError(account.ID, strings.Contains(err.Error(), "429"))
+		h.pool.RecordError(account.ID, isQuotaError(err))
 		h.autoSilentIfSuspended(account.ID, err)
 		h.checkOverageError(err, account.ID)
 		h.sendOpenAIError(w, 500, "server_error", err.Error())
@@ -2271,6 +2271,20 @@ func (h *Handler) sendOpenAIError(w http.ResponseWriter, status int, errType, me
 			"message": message,
 		},
 	})
+}
+
+// isQuotaError 检测配额耗尽错误
+func isQuotaError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errMsg := err.Error()
+	return strings.Contains(errMsg, "429") ||
+		strings.Contains(errMsg, "402") ||
+		strings.Contains(errMsg, "quota") ||
+		strings.Contains(errMsg, "reached the limit") ||
+		strings.Contains(errMsg, "MONTHLY_REQUEST_COUNT") ||
+		strings.Contains(errMsg, "DAILY_REQUEST_COUNT")
 }
 
 // ensureValidToken 确保 token 有效
