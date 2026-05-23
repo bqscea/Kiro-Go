@@ -543,7 +543,13 @@ func groupPolicyAllowsModel(accountGroups []string, model string) bool {
 // GetNextForModelAndGroups picks the next available account that supports the model
 // and whose group is permitted by allowedGroups. allowedGroups nil/empty = any group.
 func (p *AccountPool) GetNextForModelAndGroups(model string, allowedGroups []string) *config.Account {
-	if len(allowedGroups) == 0 {
+	return p.GetNextForModelAndGroupsExcluding(model, allowedGroups, nil)
+}
+
+// GetNextForModelAndGroupsExcluding picks the next available account, excluding specified IDs.
+// Used by retry logic to skip already-failed accounts.
+func (p *AccountPool) GetNextForModelAndGroupsExcluding(model string, allowedGroups []string, excludeIDs map[string]bool) *config.Account {
+	if len(allowedGroups) == 0 && excludeIDs == nil {
 		return p.GetNextForModel(model)
 	}
 
@@ -566,7 +572,11 @@ func (p *AccountPool) GetNextForModelAndGroups(model string, allowedGroups []str
 		if seen[acc.ID] {
 			continue
 		}
-		if !groupAllowed(acc.Groups, allowedGroups) {
+		if excludeIDs != nil && excludeIDs[acc.ID] {
+			seen[acc.ID] = true
+			continue
+		}
+		if len(allowedGroups) > 0 && !groupAllowed(acc.Groups, allowedGroups) {
 			seen[acc.ID] = true
 			continue
 		}
@@ -598,7 +608,10 @@ func (p *AccountPool) GetNextForModelAndGroups(model string, allowedGroups []str
 	var earliest time.Time
 	for i := range p.accounts {
 		acc := &p.accounts[i]
-		if !groupAllowed(acc.Groups, allowedGroups) {
+		if excludeIDs != nil && excludeIDs[acc.ID] {
+			continue
+		}
+		if len(allowedGroups) > 0 && !groupAllowed(acc.Groups, allowedGroups) {
 			continue
 		}
 		if !groupPolicyAllowsModel(acc.Groups, model) {

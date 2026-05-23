@@ -235,6 +235,12 @@ type Config struct {
 	// Can be overridden by the LOG_LEVEL environment variable.
 	LogLevel string `json:"logLevel,omitempty"`
 
+	// Retry configuration for request-level fault tolerance
+	MaxRetriesPerAccount int `json:"maxRetriesPerAccount,omitempty"` // Max retries per single account (default: 3)
+	MaxRetriesPerRequest int `json:"maxRetriesPerRequest,omitempty"` // Max retries across all accounts (default: 9)
+	RetryBaseDelayMs     int `json:"retryBaseDelayMs,omitempty"`     // Base delay in milliseconds (default: 100)
+	RetryMaxDelayMs      int `json:"retryMaxDelayMs,omitempty"`      // Max delay in milliseconds (default: 5000)
+
 	// Global statistics (persisted across restarts)
 	TotalRequests   int     `json:"totalRequests,omitempty"`   // Total API requests received
 	SuccessRequests int     `json:"successRequests,omitempty"` // Successful requests count
@@ -979,10 +985,41 @@ func UpdateAllowOverUsage(allow bool) error {
 func GetLogLevel() string {
 	cfgLock.RLock()
 	defer cfgLock.RUnlock()
-	if cfg == nil || cfg.LogLevel == "" {
+	if cfg == nil {
+		return "info"
+	}
+	if cfg.LogLevel == "" {
 		return "info"
 	}
 	return cfg.LogLevel
+}
+
+// GetRetryConfig returns retry configuration with defaults applied.
+func GetRetryConfig() (maxPerAccount, maxPerRequest, baseDelayMs, maxDelayMs int) {
+	cfgLock.RLock()
+	defer cfgLock.RUnlock()
+
+	maxPerAccount = 3
+	maxPerRequest = 9
+	baseDelayMs = 100
+	maxDelayMs = 5000
+
+	if cfg != nil {
+		if cfg.MaxRetriesPerAccount > 0 {
+			maxPerAccount = cfg.MaxRetriesPerAccount
+		}
+		if cfg.MaxRetriesPerRequest > 0 {
+			maxPerRequest = cfg.MaxRetriesPerRequest
+		}
+		if cfg.RetryBaseDelayMs > 0 {
+			baseDelayMs = cfg.RetryBaseDelayMs
+		}
+		if cfg.RetryMaxDelayMs > 0 {
+			maxDelayMs = cfg.RetryMaxDelayMs
+		}
+	}
+
+	return
 }
 
 // UpdateLogLevel updates the log level setting and persists the change.
