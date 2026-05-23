@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -288,7 +289,20 @@ var (
 // If the file doesn't exist, a default configuration is created.
 func Init(path string) error {
 	cfgPath = path
-	return Load()
+	if err := Load(); err != nil {
+		return err
+	}
+
+	// Initialize credentials system
+	configDir := filepath.Dir(cfgPath)
+	InitCredentials(configDir)
+
+	// Load credentials from credentials.json (optional, not an error if missing)
+	if err := LoadCredentials(); err != nil {
+		return fmt.Errorf("load credentials: %w", err)
+	}
+
+	return nil
 }
 
 func Load() error {
@@ -370,6 +384,11 @@ func GetHost() string {
 }
 
 func GetAccounts() []Account {
+	// Priority: credentials.json > config.json (backward compatibility)
+	if CredentialsLoaded() {
+		return GetCredentials()
+	}
+	// Fallback to config.json
 	cfgLock.RLock()
 	defer cfgLock.RUnlock()
 	accounts := make([]Account, len(cfg.Accounts))
@@ -378,10 +397,10 @@ func GetAccounts() []Account {
 }
 
 func GetEnabledAccounts() []Account {
-	cfgLock.RLock()
-	defer cfgLock.RUnlock()
+	// Priority: credentials.json > config.json (backward compatibility)
+	all := GetAccounts()
 	var accounts []Account
-	for _, a := range cfg.Accounts {
+	for _, a := range all {
 		if a.Enabled && !a.Silent && (a.BanStatus == "" || a.BanStatus == "ACTIVE") {
 			accounts = append(accounts, a)
 		}
@@ -390,6 +409,11 @@ func GetEnabledAccounts() []Account {
 }
 
 func AddAccount(account Account) error {
+	// Priority: credentials.json > config.json
+	if CredentialsLoaded() {
+		return AddCredential(account)
+	}
+	// Fallback to config.json
 	cfgLock.Lock()
 	defer cfgLock.Unlock()
 	cfg.Accounts = append(cfg.Accounts, account)
@@ -397,6 +421,11 @@ func AddAccount(account Account) error {
 }
 
 func UpdateAccount(id string, account Account) error {
+	// Priority: credentials.json > config.json
+	if CredentialsLoaded() {
+		return UpdateCredential(account)
+	}
+	// Fallback to config.json
 	cfgLock.Lock()
 	defer cfgLock.Unlock()
 	for i, a := range cfg.Accounts {
@@ -410,6 +439,16 @@ func UpdateAccount(id string, account Account) error {
 
 // DisableAccountOverage turns off AllowOverage for a specific account.
 func DisableAccountOverage(id string) error {
+	// Priority: credentials.json > config.json
+	if CredentialsLoaded() {
+		acc := GetCredentialByID(id)
+		if acc == nil {
+			return nil
+		}
+		acc.AllowOverage = false
+		return UpdateCredential(*acc)
+	}
+	// Fallback to config.json
 	cfgLock.Lock()
 	defer cfgLock.Unlock()
 	for i, a := range cfg.Accounts {
@@ -422,6 +461,11 @@ func DisableAccountOverage(id string) error {
 }
 
 func UpdateAccountProfileArn(id, profileArn string) error {
+	// Priority: credentials.json > config.json
+	if CredentialsLoaded() {
+		return UpdateCredentialProfileArn(id, profileArn)
+	}
+	// Fallback to config.json
 	cfgLock.Lock()
 	defer cfgLock.Unlock()
 	for i, a := range cfg.Accounts {
@@ -434,6 +478,11 @@ func UpdateAccountProfileArn(id, profileArn string) error {
 }
 
 func DeleteAccount(id string) error {
+	// Priority: credentials.json > config.json
+	if CredentialsLoaded() {
+		return RemoveCredential(id)
+	}
+	// Fallback to config.json
 	cfgLock.Lock()
 	defer cfgLock.Unlock()
 	for i, a := range cfg.Accounts {
@@ -446,6 +495,11 @@ func DeleteAccount(id string) error {
 }
 
 func UpdateAccountToken(id, accessToken, refreshToken string, expiresAt int64) error {
+	// Priority: credentials.json > config.json (writeback)
+	if CredentialsLoaded() {
+		return UpdateCredentialToken(id, accessToken, refreshToken, expiresAt)
+	}
+	// Fallback to config.json
 	cfgLock.Lock()
 	defer cfgLock.Unlock()
 	for i, a := range cfg.Accounts {
@@ -739,6 +793,11 @@ func GetStats() (int, int, int, int, float64) {
 }
 
 func UpdateAccountStats(id string, requestCount, errorCount, totalTokens int, totalCredits float64, lastUsed int64) error {
+	// Priority: credentials.json > config.json
+	if CredentialsLoaded() {
+		return UpdateCredentialStats(id, requestCount, errorCount, totalTokens, totalCredits, lastUsed)
+	}
+	// Fallback to config.json
 	cfgLock.Lock()
 	defer cfgLock.Unlock()
 	for i, a := range cfg.Accounts {
@@ -757,6 +816,26 @@ func UpdateAccountStats(id string, requestCount, errorCount, totalTokens int, to
 // UpdateAccountInfo updates an account's subscription and usage information.
 // Called after refreshing account data from Kiro API.
 func UpdateAccountInfo(id string, info AccountInfo) error {
+	// Priority: credentials.json > config.json
+	if CredentialsLoaded() {
+		// Update Email/UserId if provided
+		acc := GetCredentialByID(id)
+		if acc != nil {
+			if info.Email != "" {
+				acc.Email = info.Email
+			}
+			if info.UserId != "" {
+				acc.UserId = info.UserId
+			}
+			if info.Email != "" || info.UserId != "" {
+				if err := UpdateCredential(*acc); err != nil {
+					return err
+				}
+			}
+		}
+		return UpdateCredentialInfo(id, info)
+	}
+	// Fallback to config.json
 	cfgLock.Lock()
 	defer cfgLock.Unlock()
 	for i, a := range cfg.Accounts {
