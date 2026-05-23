@@ -39,6 +39,11 @@ func GetPool() *AccountPool {
 			modelLists:  make(map[string]map[string]bool),
 		}
 		pool.Reload()
+		// 加载持久化的冷却状态
+		if err := pool.loadCooldowns(); err != nil {
+			// 加载失败不影响启动，仅记录日志
+			_ = err
+		}
 	})
 	return pool
 }
@@ -263,8 +268,6 @@ func (p *AccountPool) RecordSuccess(id string) {
 // RecordError 记录请求错误，设置冷却
 func (p *AccountPool) RecordError(id string, isQuotaError bool) int {
 	p.mu.Lock()
-	defer p.mu.Unlock()
-
 	p.errorCounts[id]++
 	count := p.errorCounts[id]
 
@@ -276,6 +279,16 @@ func (p *AccountPool) RecordError(id string, isQuotaError bool) int {
 		// 连续 3 次错误，冷却 1 分钟
 		p.cooldowns[id] = time.Now().Add(time.Minute)
 	}
+	p.mu.Unlock()
+
+	// 异步保存冷却状态（避免阻塞请求路径）
+	go func() {
+		if err := p.SaveCooldowns(); err != nil {
+			// 保存失败不影响运行，仅记录日志
+			_ = err
+		}
+	}()
+
 	return count
 }
 

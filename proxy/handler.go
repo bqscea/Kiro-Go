@@ -244,6 +244,8 @@ func NewHandler() *Handler {
 	go h.backgroundBackupScheduler()
 	// 启动后台告警检测 (每 1min 检查)
 	go h.backgroundAlertChecker()
+	// 启动后台冷却状态保存 (每 5min 保存一次)
+	go h.backgroundCooldownSaver()
 	return h
 }
 
@@ -1533,6 +1535,26 @@ func (h *Handler) saveStats() {
 		int(atomic.LoadInt64(&h.totalTokens)),
 		h.getCredits(),
 	)
+}
+
+// backgroundCooldownSaver 后台定期保存冷却状态
+func (h *Handler) backgroundCooldownSaver() {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-h.stopStatsSaver:
+			// 停机前最后保存一次
+			if err := h.pool.SaveCooldowns(); err != nil {
+				logger.Warnf("[Pool] Failed to save cooldowns on shutdown: %v", err)
+			}
+			return
+		case <-ticker.C:
+			if err := h.pool.SaveCooldowns(); err != nil {
+				logger.Warnf("[Pool] Failed to save cooldowns: %v", err)
+			}
+		}
+	}
 }
 
 // getCredits 线程安全获取 credits
