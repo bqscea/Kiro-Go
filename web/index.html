@@ -969,6 +969,7 @@
                             <option value="disabled" data-i18n="filter.disabled"></option>
                             <option value="silent" data-i18n="filter.silent"></option>
                             <option value="banned" data-i18n="filter.banned"></option>
+                            <option value="exhausted" data-i18n="filter.exhausted"></option>
                         </select>
                         <select id="filterGroupSelect" onchange="onFilterChange()" style="padding:4px 6px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;background:#fff;cursor:pointer">
                             <option value="all" data-i18n="filter.allGroups"></option>
@@ -1366,6 +1367,7 @@
                 'accounts.copyJSONSuccess': 'JSON 已复制到剪贴板',
                 'accounts.trialDays': '天后到期',
                 'accounts.overage': '超额调用',
+                'accounts.exhausted': '额度耗尽',
                 'time.expired': '已过期',
                 'time.minutes': '分钟',
                 'time.hours': '小时',
@@ -1636,6 +1638,7 @@
                 'filter.disabled': '已禁用',
                 'filter.silent': '静默',
                 'filter.banned': '已封禁',
+                'filter.exhausted': '额度耗尽',
                 'accounts.weight': '权重',
                 'detail.weight': '请求权重',
                 'detail.weightHint': '0-1=普通, 2+=高优先级',
@@ -1819,6 +1822,7 @@
                 'accounts.copyJSON': 'Copy JSON',
                 'accounts.copyJSONSuccess': 'JSON copied to clipboard',
                 'accounts.overage': 'Overage',
+                'accounts.exhausted': 'Quota Exhausted',
                 'time.expired': 'Expired',
                 'time.minutes': 'min',
                 'time.hours': 'hr',
@@ -2085,6 +2089,7 @@
                 'filter.disabled': 'Disabled',
                 'filter.silent': 'Silent',
                 'filter.banned': 'Banned',
+                'filter.exhausted': 'Quota Exhausted',
                 'accounts.weight': 'Weight',
                 'detail.weight': 'Request Weight',
                 'detail.weightHint': '0-1=normal, 2+=higher priority',
@@ -2466,6 +2471,10 @@
                 if (filterStatus === 'disabled' && (a.enabled || a.silent || (a.banStatus && a.banStatus !== 'ACTIVE'))) return false;
                 if (filterStatus === 'silent' && !a.silent) return false;
                 if (filterStatus === 'banned' && (!a.banStatus || a.banStatus === 'ACTIVE')) return false;
+                if (filterStatus === 'exhausted') {
+                    const isExhausted = a.usageLimit > 0 && a.usageCurrent >= a.usageLimit;
+                    if (!isExhausted) return false;
+                }
                 if (filterGroup === '__default__') {
                     if (a.groups && a.groups.length > 0) return false;
                 } else if (filterGroup !== 'all') {
@@ -2760,6 +2769,8 @@
                 const weightVal = a.weight || 0;
                 const weightBadge = weightVal >= 2 ? '<span class="badge" style="background:#f59e0b;color:#fff">W:' + weightVal + '</span>' : '';
                 const overageBadge = a.allowOverage ? '<span class="badge badge-warning">' + t('accounts.overage') + ':' + (a.overageWeight || 1) + '</span>' : '';
+                const isExhausted = a.usageLimit > 0 && a.usageCurrent >= a.usageLimit;
+                const exhaustedBadge = isExhausted ? '<span class="badge" style="background:#dc2626;color:#fff">' + t('accounts.exhausted') + '</span>' : '';
                 return '<div class="account-card" style="' + (isSelected ? 'border-color:#7c3aed;background:#faf5ff' : '') + '">' +
                     '<div class="account-header">' +
                     '<div class="account-info" style="display:flex;align-items:center;gap:8px">' +
@@ -2771,6 +2782,7 @@
                     getTrialBadge(a) +
                     weightBadge +
                     overageBadge +
+                    exhaustedBadge +
                     ((a.groups || []).length > 0 ? (a.groups || []).map(g => '<span class="badge" style="background:#0ea5e9;color:#fff">' + t('accounts.group') + ':' + g + '</span>').join('') : '') +
                     '<span class="badge badge-info">' + formatAuthMethod(a.provider || a.authMethod) + '</span>' +
                     getStatusBadge(a) +
