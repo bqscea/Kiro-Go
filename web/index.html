@@ -916,6 +916,10 @@
                 <div class="stat-label" data-i18n="stats.banned"></div>
             </div>
             <div class="stat-card">
+                <div class="stat-value" id="statExhausted">0</div>
+                <div class="stat-label" data-i18n="stats.exhausted"></div>
+            </div>
+            <div class="stat-card">
                 <div class="stat-value" id="statTodayBanned">0</div>
                 <div class="stat-label" data-i18n="stats.todayBanned"></div>
             </div>
@@ -1329,6 +1333,7 @@
                 'stats.failed': '失败',
                 'stats.banned': '总封禁',
                 'stats.todayBanned': '今日封禁',
+                'stats.exhausted': '额度耗尽',
                 'tabs.accounts': '账号',
                 'tabs.settings': '设置',
                 'tabs.api': 'API',
@@ -1790,6 +1795,7 @@
                 'stats.failed': 'Failed',
                 'stats.banned': 'Banned',
                 'stats.todayBanned': 'Today',
+                'stats.exhausted': 'Exhausted',
                 'tabs.accounts': 'Accounts',
                 'tabs.settings': 'Settings',
                 'tabs.api': 'API',
@@ -2408,6 +2414,7 @@
             document.getElementById('statCredits').textContent = (d.totalCredits || 0).toFixed(1);
             document.getElementById('statBanned').textContent = d.totalBanned || 0;
             document.getElementById('statTodayBanned').textContent = d.todayBanned || 0;
+            document.getElementById('statExhausted').textContent = d.totalExhausted || 0;
             renderGroupBoard(d.groupBreakdown || []);
         }
         function renderGroupBoard(groups) {

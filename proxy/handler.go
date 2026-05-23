@@ -3320,10 +3320,11 @@ func (h *Handler) apiImportCredentials(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) apiGetStatus(w http.ResponseWriter, r *http.Request) {
-	// 统计封禁账号
+	// 统计封禁账号与额度耗尽账号
 	accounts := config.GetAccounts()
 	totalBanned := 0
 	todayBanned := 0
+	totalExhausted := 0
 	todayStart := time.Now().Truncate(24 * time.Hour).Unix()
 
 	for _, a := range accounts {
@@ -3332,6 +3333,9 @@ func (h *Handler) apiGetStatus(w http.ResponseWriter, r *http.Request) {
 			if a.BanTime >= todayStart {
 				todayBanned++
 			}
+		}
+		if a.UsageLimit > 0 && a.UsageCurrent >= a.UsageLimit {
+			totalExhausted++
 		}
 	}
 
@@ -3347,6 +3351,7 @@ func (h *Handler) apiGetStatus(w http.ResponseWriter, r *http.Request) {
 		"groupBreakdown":  h.pool.GroupStats(),
 		"totalBanned":     totalBanned,
 		"todayBanned":     todayBanned,
+		"totalExhausted":  totalExhausted,
 	})
 }
 
