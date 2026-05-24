@@ -1279,6 +1279,7 @@
                     <button class="status-tab active" data-status="available" onclick="switchStatusTab('available')" data-i18n="filter.available"></button>
                     <button class="status-tab" data-status="enabled" onclick="switchStatusTab('enabled')" data-i18n="filter.enabled"></button>
                     <button class="status-tab" data-status="disabled" onclick="switchStatusTab('disabled')" data-i18n="filter.disabled"></button>
+                    <button class="status-tab" data-status="standby" onclick="switchStatusTab('standby')" data-i18n="filter.standby"></button>
                     <button class="status-tab" data-status="banned" onclick="switchStatusTab('banned')" data-i18n="filter.banned"></button>
                     <button class="status-tab" data-status="exhausted" onclick="switchStatusTab('exhausted')" data-i18n="filter.exhausted"></button>
                 </div>
@@ -2027,6 +2028,7 @@
                 'filter.available': '可用',
                 'filter.enabled': '已启用',
                 'filter.disabled': '已禁用',
+                'filter.standby': '备用',
                 'filter.banned': '已封禁',
                 'filter.exhausted': '额度耗尽',
                 'filter.clear': '清空筛选',
@@ -2516,6 +2518,7 @@
                 'filter.available': 'Available',
                 'filter.enabled': 'Enabled',
                 'filter.disabled': 'Disabled',
+                'filter.standby': 'Standby',
                 'filter.banned': 'Banned',
                 'filter.exhausted': 'Quota Exhausted',
                 'filter.clear': 'Clear Filters',
@@ -2876,6 +2879,7 @@
                 }
                 if (filterStatus === 'enabled' && !a.enabled) return false;
                 if (filterStatus === 'disabled' && (a.enabled || (a.banStatus && a.banStatus !== 'ACTIVE'))) return false;
+                if (filterStatus === 'standby' && !a.standby) return false;
                 if (filterStatus === 'banned' && (!a.banStatus || a.banStatus === 'ACTIVE')) return false;
                 if (filterStatus === 'exhausted') {
                     const notBanned = !a.banStatus || a.banStatus === 'ACTIVE';
@@ -2906,6 +2910,7 @@
             }).length;
             const enabledCount = accountsData.filter(a => a.enabled).length;
             const disabledCount = accountsData.filter(a => !a.enabled && (!a.banStatus || a.banStatus === 'ACTIVE')).length;
+            const standbyCount = accountsData.filter(a => a.standby).length;
             const bannedCount = accountsData.filter(a => a.banStatus && a.banStatus !== 'ACTIVE').length;
             const exhaustedCount = accountsData.filter(a => {
                 const notBanned = !a.banStatus || a.banStatus === 'ACTIVE';
@@ -2920,6 +2925,7 @@
                 else if (status === 'available') count = availableCount;
                 else if (status === 'enabled') count = enabledCount;
                 else if (status === 'disabled') count = disabledCount;
+                else if (status === 'standby') count = standbyCount;
                 else if (status === 'banned') count = bannedCount;
                 else if (status === 'exhausted') count = exhaustedCount;
 
