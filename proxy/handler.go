@@ -3419,11 +3419,12 @@ func (h *Handler) apiGetStatus(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) apiGetSettings(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"apiKey":         config.GetApiKey(),
-		"requireApiKey":  config.IsApiKeyRequired(),
-		"port":           config.GetPort(),
-		"host":           config.GetHost(),
-		"allowOverUsage": config.GetAllowOverUsage(),
+		"apiKey":              config.GetApiKey(),
+		"requireApiKey":       config.IsApiKeyRequired(),
+		"port":                config.GetPort(),
+		"host":                config.GetHost(),
+		"allowOverUsage":      config.GetAllowOverUsage(),
+		"loadBalancingMode":   config.GetLoadBalancingMode(),
 	})
 }
 
@@ -3472,10 +3473,11 @@ func (h *Handler) apiUpdatePromptFilter(w http.ResponseWriter, r *http.Request) 
 
 func (h *Handler) apiUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		ApiKey         string `json:"apiKey"`
-		RequireApiKey  bool   `json:"requireApiKey"`
-		Password       string `json:"password"`
-		AllowOverUsage *bool  `json:"allowOverUsage,omitempty"`
+		ApiKey             string `json:"apiKey"`
+		RequireApiKey      bool   `json:"requireApiKey"`
+		Password           string `json:"password"`
+		AllowOverUsage     *bool  `json:"allowOverUsage,omitempty"`
+		LoadBalancingMode  string `json:"loadBalancingMode,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.WriteHeader(400)
@@ -3496,6 +3498,22 @@ func (h *Handler) apiUpdateSettings(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 			return
 		}
+	}
+
+	// 更新负载均衡模式
+	if req.LoadBalancingMode != "" {
+		if req.LoadBalancingMode != "balanced" && req.LoadBalancingMode != "priority" {
+			w.WriteHeader(400)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Invalid loadBalancingMode, must be 'balanced' or 'priority'"})
+			return
+		}
+		if err := config.UpdateLoadBalancingMode(req.LoadBalancingMode); err != nil {
+			w.WriteHeader(500)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		// 重新加载账号池以应用新的负载均衡模式
+		h.pool.Reload()
 	}
 
 	json.NewEncoder(w).Encode(map[string]bool{"success": true})

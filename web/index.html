@@ -1387,6 +1387,15 @@
                     <small style="color:#64748b;font-size:12px;margin-top:4px;display:block"
                         data-i18n="settings.allowOverUsageHint"></small>
                 </div>
+                <div class="form-group" style="margin-top:16px">
+                    <label data-i18n="settings.loadBalancingMode"></label>
+                    <select id="loadBalancingMode">
+                        <option value="balanced" data-i18n="settings.loadBalancingBalanced"></option>
+                        <option value="priority" data-i18n="settings.loadBalancingPriority"></option>
+                    </select>
+                    <small style="color:#64748b;font-size:12px;margin-top:4px;display:block"
+                        data-i18n="settings.loadBalancingModeHint"></small>
+                </div>
                 <button class="btn btn-primary" onclick="saveOverUsageConfig()" data-i18n="common.save"></button>
             </div>
             <div class="card">
@@ -1780,6 +1789,10 @@
                 'settings.allowOverUsage': '允许超额使用',
                 'settings.allowOverUsageHint': '开启后，即使账号额度用尽也会继续使用该账号处理请求，不再因余额不足而报错',
                 'settings.overUsageSaved': '超额使用设置已保存',
+                'settings.loadBalancingMode': '负载均衡模式',
+                'settings.loadBalancingBalanced': '均衡模式（权重越大用得越多）',
+                'settings.loadBalancingPriority': '优先级模式（权重越大优先用）',
+                'settings.loadBalancingModeHint': '均衡模式：权重控制出现频率，轮询选择。优先级模式：权重大的优先用，用完或冷却才用权重小的',
                 'settings.thinkingSettings': 'Thinking 模式设置',
                 'settings.thinkingSuffix': '触发后缀',
                 'settings.thinkingSuffixHint': '模型名称加此后缀即启用思考模式，如 claude-sonnet-4.5-thinking',
@@ -2276,6 +2289,10 @@
                 'settings.allowOverUsage': 'Allow Over-Usage',
                 'settings.allowOverUsageHint': 'When enabled, accounts will continue to serve requests even after their quota is exhausted',
                 'settings.overUsageSaved': 'Over-usage settings saved',
+                'settings.loadBalancingMode': 'Load Balancing Mode',
+                'settings.loadBalancingBalanced': 'Balanced (higher weight = more usage)',
+                'settings.loadBalancingPriority': 'Priority (higher weight = higher priority)',
+                'settings.loadBalancingModeHint': 'Balanced: weight controls frequency in round-robin. Priority: higher weight accounts used first, lower weight used when exhausted or cooling down',
                 'settings.thinkingSettings': 'Thinking Mode Settings',
                 'settings.thinkingSuffix': 'Trigger Suffix',
                 'settings.thinkingSuffixHint': 'Add this suffix to model name to enable thinking mode, e.g. claude-sonnet-4.5-thinking',
@@ -3837,6 +3854,7 @@
             document.getElementById('requireApiKey').checked = d.requireApiKey;
             document.getElementById('apiKeyInput').value = d.apiKey || '';
             document.getElementById('allowOverUsage').checked = d.allowOverUsage || false;
+            document.getElementById('loadBalancingMode').value = d.loadBalancingMode || 'balanced';
             await loadApiKeys();
             await loadGroupPolicies();
             await loadModelAliases();
@@ -4313,9 +4331,10 @@
         }
         async function saveOverUsageConfig() {
             const allowOverUsage = document.getElementById('allowOverUsage').checked;
+            const loadBalancingMode = document.getElementById('loadBalancingMode').value;
             await fetch('/admin/api/settings', {
                 method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Admin-Password': password },
-                body: JSON.stringify({ allowOverUsage })
+                body: JSON.stringify({ allowOverUsage, loadBalancingMode })
             });
             alert(t('settings.overUsageSaved'));
         }

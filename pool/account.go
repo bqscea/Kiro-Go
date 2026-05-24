@@ -214,7 +214,7 @@ func (p *AccountPool) getNextBalanced() *config.Account {
 	return best
 }
 
-// getUniqueSortedAccounts 去重并按优先级排序（Weight 越小优先级越高）
+// getUniqueSortedAccounts 去重并按优先级排序（Weight 越大优先级越高）
 func (p *AccountPool) getUniqueSortedAccounts() []config.Account {
 	seen := make(map[string]bool)
 	var unique []config.Account
@@ -233,7 +233,7 @@ func (p *AccountPool) getUniqueSortedAccounts() []config.Account {
 		if isOverUsageLimit(unique[j]) && unique[j].AllowOverage {
 			wj = effectiveOverageWeight(unique[j].OverageWeight)
 		}
-		return wi < wj // 小权重 = 高优先级
+		return wi > wj // 大权重 = 高优先级
 	})
 	return unique
 }
