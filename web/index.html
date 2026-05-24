@@ -1985,6 +1985,8 @@
                 'import.processing': '正在处理',
                 'import.emptyJson': '请输入 JSON 内容',
                 'import.confirmClose': '导入进行中，确定关闭？',
+                'import.standbyMode': '加入备用',
+                'import.standbyHint': '（仅刷新不调用）',
                 'update.title': '版本更新',
                 'update.current': '当前版本',
                 'update.latest': '最新版本',
@@ -2475,6 +2477,8 @@
                 'import.processing': 'Processing',
                 'import.emptyJson': 'Please enter JSON content',
                 'import.confirmClose': 'Import in progress, confirm close?',
+                'import.standbyMode': 'Add to Standby',
+                'import.standbyHint': '(refresh only, not used for requests)',
                 'update.title': 'Version Update',
                 'update.current': 'Current',
                 'update.latest': 'Latest',
@@ -4764,6 +4768,11 @@
                 body.innerHTML =
                     '<div class="form-group"><label>' + t('import.jsonLabel') + '</label>' +
                     '<textarea id="importJsonInput" placeholder="' + t('import.jsonPlaceholder') + '" style="min-height:200px;font-family:monospace;font-size:12px"></textarea></div>' +
+                    '<div class="form-group" style="margin-top:12px"><label style="display:flex;align-items:center;cursor:pointer;user-select:none">' +
+                    '<input type="checkbox" id="importStandbyMode" style="margin-right:8px">' +
+                    '<span>' + t('import.standbyMode') + '</span>' +
+                    '<span style="margin-left:8px;font-size:12px;color:#64748b;font-weight:normal">' + t('import.standbyHint') + '</span>' +
+                    '</label></div>' +
                     '<div class="modal-footer">' +
                     '<button class="btn btn-secondary" onclick="closeImportModal()">' + t('common.cancel') + '</button>' +
                     '<button class="btn btn-primary" onclick="startImport()">' + t('import.start') + '</button>' +
@@ -4824,6 +4833,8 @@
             const input = document.getElementById('importJsonInput');
             const jsonText = input.value.trim();
             if (!jsonText) { alert(t('import.emptyJson')); return; }
+
+            const standbyMode = document.getElementById('importStandbyMode')?.checked || false;
 
             let items;
             try {
@@ -4893,7 +4904,8 @@
                     clientSecret: item.clientSecret || '',
                     authMethod: authMethod,
                     provider: provider,
-                    region: item.region || 'us-east-1'
+                    region: item.region || 'us-east-1',
+                    standby: standbyMode
                 };
 
                 try {

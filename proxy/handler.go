@@ -3250,6 +3250,7 @@ func (h *Handler) apiImportCredentials(w http.ResponseWriter, r *http.Request) {
 		AuthMethod   string `json:"authMethod"`
 		Provider     string `json:"provider"`
 		Region       string `json:"region"`
+		Standby      bool   `json:"standby"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.WriteHeader(400)
@@ -3358,6 +3359,10 @@ func (h *Handler) apiImportCredentials(w http.ResponseWriter, r *http.Request) {
 		Enabled:      true,
 		MachineId:    config.GenerateMachineId(),
 		ProfileArn:   newProfileArn,
+		Standby:      req.Standby,
+	}
+	if req.Standby {
+		account.StandbyTime = time.Now().Unix()
 	}
 
 	if err := config.AddAccount(account); err != nil {
