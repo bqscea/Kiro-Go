@@ -14,6 +14,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"kiro-go/config"
 	"kiro-go/logger"
@@ -22,7 +23,10 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
+	"time"
 )
 
 func main() {
@@ -58,12 +62,42 @@ func main() {
 
 	// 启动服务器
 	addr := fmt.Sprintf("%s:%d", config.GetHost(), config.GetPort())
+	server := &http.Server{
+		Addr:    addr,
+		Handler: handler,
+	}
+
 	logger.Infof("Kiro-Go starting on http://%s (log level: %s)", addr, logger.LevelName(logger.GetLevel()))
 	logger.Infof("Admin panel: http://%s/admin", addr)
 	logger.Infof("Claude API: http://%s/v1/messages", addr)
 	logger.Infof("OpenAI API: http://%s/v1/chat/completions", addr)
 
-	if err := http.ListenAndServe(addr, handler); err != nil {
-		logger.Fatalf("Server failed: %v", err)
+	// 信号捕获
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	// 启动服务器（非阻塞）
+	go func() {
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Fatalf("Server failed: %v", err)
+		}
+	}()
+
+	// 等待信号
+	sig := <-sigChan
+	logger.Infof("Received signal %v, shutting down gracefully...", sig)
+
+	// 优雅关闭
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer shutdownCancel()
+
+	// 停止后台协程
+	handler.Shutdown()
+
+	// 停止 HTTP 服务器
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		logger.Errorf("Server shutdown error: %v", err)
 	}
+
+	logger.Infof("Kiro-Go stopped")
 }
