@@ -2577,6 +2577,8 @@ func (h *Handler) apiGetAccounts(w http.ResponseWriter, r *http.Request) {
 			"trialUsagePercent": a.TrialUsagePercent,
 			"trialStatus":       a.TrialStatus,
 			"trialExpiresAt":    a.TrialExpiresAt,
+			"standby":           a.Standby,
+			"standbyTime":       a.StandbyTime,
 			"requestCount":      stats.RequestCount,
 			"errorCount":        stats.ErrorCount,
 			"totalTokens":       stats.TotalTokens,
