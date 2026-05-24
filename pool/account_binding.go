@@ -19,6 +19,10 @@ func (p *AccountPool) cleanupExpiredBindings() {
 		now := time.Now()
 		for clientIP, lastSeen := range p.bindingLastSeen {
 			if now.Sub(lastSeen) > clientBindingExpiry {
+				// 清理反向映射
+				if accountID, exists := p.clientBindings[clientIP]; exists {
+					delete(p.accountBindings, accountID)
+				}
 				delete(p.clientBindings, clientIP)
 				delete(p.bindingLastSeen, clientIP)
 			}
@@ -27,13 +31,23 @@ func (p *AccountPool) cleanupExpiredBindings() {
 	}
 }
 
-// bindClient 绑定客户端到账号
+// bindClient 绑定客户端到账号（确保一账号一客户端）
 func (p *AccountPool) bindClient(clientIP, accountID string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
+	// 检查该账号是否已绑定到其他客户端
+	if oldClient, exists := p.accountBindings[accountID]; exists && oldClient != clientIP {
+		// 解绑旧客户端
+		delete(p.clientBindings, oldClient)
+		delete(p.bindingLastSeen, oldClient)
+		logger.Infof("[AccountBinding] Unbound old client %s from account %s", oldClient, accountID)
+	}
+
+	// 绑定新客户端
 	p.clientBindings[clientIP] = accountID
+	p.accountBindings[accountID] = clientIP
 	p.bindingLastSeen[clientIP] = time.Now()
-	// 调试日志：记录绑定操作
 	logger.Infof("[AccountBinding] Bound client %s to account %s", clientIP, accountID)
 }
 
@@ -41,6 +55,12 @@ func (p *AccountPool) bindClient(clientIP, accountID string) {
 func (p *AccountPool) unbindClient(clientIP string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
+	// 清理反向映射
+	if accountID, exists := p.clientBindings[clientIP]; exists {
+		delete(p.accountBindings, accountID)
+	}
+
 	delete(p.clientBindings, clientIP)
 	delete(p.bindingLastSeen, clientIP)
 }

@@ -28,6 +28,7 @@ type AccountPool struct {
 	errorCounts     map[string]int             // 连续错误计数
 	modelLists      map[string]map[string]bool // accountID → set of modelIDs (from ListAvailableModels)
 	clientBindings  map[string]string          // clientIP:Port → accountID（会话级绑定）
+	accountBindings map[string]string          // accountID → clientIP:Port（反向映射，确保一账号一客户端）
 	bindingLastSeen map[string]time.Time       // clientIP:Port → 最后请求时间（30分钟无请求则解绑）
 }
 
@@ -44,6 +45,7 @@ func GetPool() *AccountPool {
 			errorCounts:     make(map[string]int),
 			modelLists:      make(map[string]map[string]bool),
 			clientBindings:  make(map[string]string),
+			accountBindings: make(map[string]string),
 			bindingLastSeen: make(map[string]time.Time),
 		}
 		pool.Reload()
