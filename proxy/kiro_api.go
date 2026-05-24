@@ -209,46 +209,44 @@ func RefreshAccountInfo(account *config.Account) (*config.AccountInfo, error) {
 		LastRefresh: time.Now().Unix(),
 	}
 
+	// 前置模型检测：权威验证账号可用性
+	_, modelsErr := ListAvailableModels(account)
+	if modelsErr != nil {
+		// 模型不可用，标记封禁
+		logger.Warnf("[RefreshAccountInfo] Account %s models unavailable: %v", account.Email, modelsErr)
+
+		updatedAccount := *account
+		updatedAccount.Enabled = false
+		updatedAccount.BanStatus = "BANNED"
+		updatedAccount.BanReason = "Models unavailable - account suspended or token invalid"
+		updatedAccount.BanTime = time.Now().Unix()
+
+		if updateErr := config.UpdateAccount(account.ID, updatedAccount); updateErr != nil {
+			logger.Errorf("[RefreshAccountInfo] Failed to update account ban status: %v", updateErr)
+		}
+
+		return nil, fmt.Errorf("models unavailable: %w", modelsErr)
+	}
+
+	// 模型可用，如果之前被封禁则清除封禁状态
+	if account.BanStatus != "" && account.BanStatus != "ACTIVE" {
+		logger.Infof("[RefreshAccountInfo] Account %s models accessible, clearing ban status", account.Email)
+
+		updatedAccount := *account
+		updatedAccount.BanStatus = "ACTIVE"
+		updatedAccount.BanReason = ""
+		updatedAccount.BanTime = 0
+
+		if updateErr := config.UpdateAccount(account.ID, updatedAccount); updateErr != nil {
+			logger.Errorf("[RefreshAccountInfo] Failed to clear account ban status: %v", updateErr)
+		}
+	}
+
 	// 获取使用量和订阅信息
 	usage, err := GetUsageLimits(account)
 	if err != nil {
-		// 检测封禁状态
-		errMsg := err.Error()
-		if strings.Contains(errMsg, "TEMPORARILY_SUSPENDED") {
-			// 账户被暂时封禁，自动禁用并标记封禁状态
-			logger.Warnf("[RefreshAccountInfo] Account %s is temporarily suspended: %v", account.Email, err)
-
-			// 更新账户封禁状态并自动禁用
-			updatedAccount := *account
-			updatedAccount.Enabled = false
-			updatedAccount.BanStatus = "BANNED"
-			updatedAccount.BanReason = "AWS temporarily suspended - unusual user activity detected"
-			updatedAccount.BanTime = time.Now().Unix()
-
-			// 保存更新后的账户状态
-			if updateErr := config.UpdateAccount(account.ID, updatedAccount); updateErr != nil {
-				logger.Errorf("[RefreshAccountInfo] Failed to update account ban status: %v", updateErr)
-			}
-
-			return nil, fmt.Errorf("Account suspended: %w", err)
-		} else if strings.Contains(errMsg, "403") || strings.Contains(errMsg, "401") ||
-			strings.Contains(errMsg, "invalid") || strings.Contains(errMsg, "expired") {
-			// Token 相关错误，可能需要重新认证
-			logger.Warnf("[RefreshAccountInfo] Authentication error for %s: %v", account.Email, err)
-
-			// 更新账户封禁状态为认证失败并自动禁用
-			updatedAccount := *account
-			updatedAccount.Enabled = false
-			updatedAccount.BanStatus = "BANNED"
-			updatedAccount.BanReason = "Authentication failed - token invalid or expired"
-			updatedAccount.BanTime = time.Now().Unix()
-
-			// 保存更新后的账户状态
-			if updateErr := config.UpdateAccount(account.ID, updatedAccount); updateErr != nil {
-				logger.Errorf("[RefreshAccountInfo] Failed to update account ban status: %v", updateErr)
-			}
-		}
-
+		// GetUsageLimits 失败但模型可用，可能是临时错误
+		logger.Warnf("[RefreshAccountInfo] GetUsageLimits failed for %s (models accessible): %v", account.Email, err)
 		return nil, fmt.Errorf("GetUsageLimits: %w", err)
 	}
 
@@ -318,27 +316,6 @@ func RefreshAccountInfo(account *config.Account) (*config.AccountInfo, error) {
 					info.TrialExpiresAt = int64(f)
 				}
 			}
-		}
-	}
-
-	// 如果账号之前被封禁，通过模型列表验证是否真正恢复
-	if account.BanStatus != "" && account.BanStatus != "ACTIVE" {
-		_, modelsErr := ListAvailableModels(account)
-		if modelsErr == nil {
-			// 模型列表加载成功，账号确实恢复，清除封禁状态
-			logger.Infof("[RefreshAccountInfo] Account %s models accessible, clearing ban status", account.Email)
-
-			updatedAccount := *account
-			updatedAccount.BanStatus = "ACTIVE"
-			updatedAccount.BanReason = ""
-			updatedAccount.BanTime = 0
-
-			if updateErr := config.UpdateAccount(account.ID, updatedAccount); updateErr != nil {
-				logger.Errorf("[RefreshAccountInfo] Failed to clear account ban status: %v", updateErr)
-			}
-		} else {
-			// 模型列表加载失败，账号仍然不可用，保持封禁状态
-			logger.Warnf("[RefreshAccountInfo] Account %s still banned, models not accessible: %v", account.Email, modelsErr)
 		}
 	}
 
