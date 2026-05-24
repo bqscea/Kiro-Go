@@ -612,6 +612,41 @@
             transition: background 0.2s ease;
         }
 
+        .detail-tabs {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 16px;
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 0;
+        }
+
+        .detail-tab {
+            padding: 8px 16px;
+            cursor: pointer;
+            color: #64748b;
+            font-weight: 500;
+            font-size: 13px;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .detail-tab:hover {
+            color: #374151;
+        }
+
+        .detail-tab.active {
+            color: #7c3aed;
+            border-bottom-color: #7c3aed;
+        }
+
+        .detail-tab-content {
+            display: none;
+        }
+
+        .detail-tab-content.active {
+            display: block;
+        }
+
         .model-item:last-child {
             margin-bottom: 0;
         }
@@ -1790,6 +1825,11 @@
                 'api.stats': '统计数据',
                 'api.statsHint': '需要在请求头中携带 API Key 鉴权（Authorization: Bearer sk-xxx），未启用 API Key 验证时无需鉴权',
                 'detail.title': '账号详情',
+                'detail.tabBasic': '基本',
+                'detail.tabConfig': '配置',
+                'detail.tabSubscription': '订阅',
+                'detail.tabStats': '统计',
+                'detail.tabModels': '模型',
                 'detail.basicInfo': '基本信息',
                 'detail.status': '状态',
                 'detail.email': '邮箱',
@@ -2260,6 +2300,11 @@
                 'api.stats': 'Statistics',
                 'api.statsHint': 'Requires API Key in header (Authorization: Bearer sk-xxx). No auth needed if API Key verification is disabled.',
                 'detail.title': 'Account Details',
+                'detail.tabBasic': 'Basic',
+                'detail.tabConfig': 'Config',
+                'detail.tabSubscription': 'Subscription',
+                'detail.tabStats': 'Stats',
+                'detail.tabModels': 'Models',
                 'detail.basicInfo': 'Basic Info',
                 'detail.status': 'Status',
                 'detail.email': 'Email',
@@ -3270,15 +3315,16 @@
         async function showDetail(id) {
             const a = accountsData.find(x => x.id === id);
             if (!a) return;
-            document.getElementById('detailBody').innerHTML =
-                '<div class="detail-section"><h4>' + t('detail.basicInfo') + '</h4><div class="detail-grid">' +
+
+            const basicTab = '<div class="detail-grid">' +
                 '<div class="detail-item"><div class="detail-label">' + t('detail.email') + '</div><div class="detail-value">' + getDisplayEmail(a.email, null) + '</div></div>' +
                 '<div class="detail-item"><div class="detail-label">' + t('detail.userId') + '</div><div class="detail-value">' + (a.userId || '-') + '</div></div>' +
                 '<div class="detail-item"><div class="detail-label">' + t('detail.authMethod') + '</div><div class="detail-value">' + formatAuthMethod(a.provider || a.authMethod) + '</div></div>' +
                 '<div class="detail-item"><div class="detail-label">' + t('detail.region') + '</div><div class="detail-value">' + (a.region || 'us-east-1') + '</div></div>' +
                 '<div class="detail-item"><div class="detail-label">' + t('detail.status') + '</div><div class="detail-value">' + (a.enabled ? t('accounts.enabled') : t('accounts.disabled')) + '</div></div>' +
-                '</div></div>' +
-                '<div class="detail-section"><h4>' + t('detail.machineId') + '</h4><div class="machine-id-row">' +
+                '</div>';
+
+            const configTab = '<div class="detail-section"><h4>' + t('detail.machineId') + '</h4><div class="machine-id-row">' +
                 '<input type="text" id="machineIdInput" value="' + (a.machineId || '') + '" placeholder="UUID">' +
                 '<button class="btn btn-sm btn-secondary" onclick="generateMachineId()">' + t('detail.generate') + '</button>' +
                 '<button class="btn btn-sm btn-primary" onclick="saveMachineId(\'' + id + '\')">' + t('detail.save') + '</button>' +
@@ -3310,8 +3356,9 @@
                 '<div class="detail-section"><h4>' + t('detail.proxyURL') + '</h4><div class="machine-id-row">' +
                 '<input type="text" id="proxyURLInput" value="' + (a.proxyURL || '') + '" placeholder="socks5://host:port" style="flex:1">' +
                 '<button class="btn btn-sm btn-primary" onclick="saveProxyURL(\'' + id + '\')">' + t('detail.save') + '</button>' +
-                '</div><p style="color:#64748b;font-size:12px;margin-top:4px">' + t('detail.proxyHint') + '</p></div>' +
-                '<div class="detail-section"><h4>' + t('detail.subscription') + '</h4><div class="detail-grid">' +
+                '</div><p style="color:#64748b;font-size:12px;margin-top:4px">' + t('detail.proxyHint') + '</p></div>';
+
+            const subscriptionTab = '<div class="detail-grid">' +
                 '<div class="detail-item"><div class="detail-label">' + t('detail.subscriptionType') + '</div><div class="detail-value">' + (a.subscriptionTitle || a.subscriptionType || '-') + '</div></div>' +
                 '<div class="detail-item"><div class="detail-label">' + t('detail.tokenExpiry') + '</div><div class="detail-value">' + (a.expiresAt ? new Date(a.expiresAt * 1000).toLocaleString() : '-') + '</div></div>' +
                 '<div class="detail-item"><div class="detail-label">' + t('detail.mainQuota') + '</div><div class="detail-value">' + (a.usageCurrent?.toFixed(1) || 0) + ' / ' + (a.usageLimit?.toFixed(0) || 0) + '</div></div>' +
@@ -3319,15 +3366,44 @@
                 (a.trialUsageLimit > 0 ? '<div class="detail-item"><div class="detail-label">' + t('detail.trialQuota') + '</div><div class="detail-value">' + (a.trialUsageCurrent?.toFixed(1) || 0) + ' / ' + (a.trialUsageLimit?.toFixed(0) || 0) + '</div></div>' +
                     '<div class="detail-item"><div class="detail-label">' + t('detail.trialStatus') + '</div><div class="detail-value">' + (a.trialStatus || '-') + '</div></div>' +
                     '<div class="detail-item"><div class="detail-label">' + t('detail.trialExpiry') + '</div><div class="detail-value">' + (a.trialExpiresAt ? new Date(a.trialExpiresAt * 1000).toLocaleString() : '-') + '</div></div>' : '') +
-                '</div></div>' +
-                '<div class="detail-section"><h4>' + t('detail.statistics') + '</h4><div class="detail-grid">' +
+                '</div>';
+
+            const statsTab = '<div class="detail-grid">' +
                 '<div class="detail-item"><div class="detail-label">' + t('detail.requestCount') + '</div><div class="detail-value">' + (a.requestCount || 0) + '</div></div>' +
                 '<div class="detail-item"><div class="detail-label">' + t('detail.errorCount') + '</div><div class="detail-value">' + (a.errorCount || 0) + '</div></div>' +
                 '<div class="detail-item"><div class="detail-label">' + t('detail.totalTokens') + '</div><div class="detail-value">' + formatNum(a.totalTokens || 0) + '</div></div>' +
                 '<div class="detail-item"><div class="detail-label">' + t('detail.totalCredits') + '</div><div class="detail-value">' + (a.totalCredits || 0).toFixed(2) + '</div></div>' +
-                '</div></div>' +
-                '<div class="detail-section"><h4>' + t('detail.models') + ' <button class="btn btn-sm btn-secondary" onclick="loadModels(\'' + id + '\')" style="margin-left:8px">' + t('detail.loadModels') + '</button> <button class="btn btn-sm btn-secondary" onclick="refreshAccountModels(\'' + id + '\')" style="margin-left:4px">' + t('detail.refreshModelCache') + '</button></h4><div id="modelsList" class="model-list"></div></div>';
+                '</div>';
+
+            const modelsTab = '<div style="margin-bottom:12px">' +
+                '<button class="btn btn-sm btn-secondary" onclick="loadModels(\'' + id + '\')">' + t('detail.loadModels') + '</button> ' +
+                '<button class="btn btn-sm btn-secondary" onclick="refreshAccountModels(\'' + id + '\')" style="margin-left:4px">' + t('detail.refreshModelCache') + '</button>' +
+                '</div><div id="modelsList" class="model-list"></div>';
+
+            document.getElementById('detailBody').innerHTML =
+                '<div class="detail-tabs">' +
+                '<div class="detail-tab active" data-detail-tab="basic" onclick="switchDetailTab(\'basic\')">' + t('detail.tabBasic') + '</div>' +
+                '<div class="detail-tab" data-detail-tab="config" onclick="switchDetailTab(\'config\')">' + t('detail.tabConfig') + '</div>' +
+                '<div class="detail-tab" data-detail-tab="subscription" onclick="switchDetailTab(\'subscription\')">' + t('detail.tabSubscription') + '</div>' +
+                '<div class="detail-tab" data-detail-tab="stats" onclick="switchDetailTab(\'stats\')">' + t('detail.tabStats') + '</div>' +
+                '<div class="detail-tab" data-detail-tab="models" onclick="switchDetailTab(\'models\')">' + t('detail.tabModels') + '</div>' +
+                '</div>' +
+                '<div class="detail-tab-content active" data-detail-content="basic">' + basicTab + '</div>' +
+                '<div class="detail-tab-content" data-detail-content="config">' + configTab + '</div>' +
+                '<div class="detail-tab-content" data-detail-content="subscription">' + subscriptionTab + '</div>' +
+                '<div class="detail-tab-content" data-detail-content="stats">' + statsTab + '</div>' +
+                '<div class="detail-tab-content" data-detail-content="models">' + modelsTab + '</div>';
+
             document.getElementById('detailModal').classList.add('active');
+            document.getElementById('detailModal').dataset.accountId = id;
+        }
+        function switchDetailTab(tab) {
+            document.querySelectorAll('.detail-tab').forEach(t => t.classList.toggle('active', t.dataset.detailTab === tab));
+            document.querySelectorAll('.detail-tab-content').forEach(c => c.classList.toggle('active', c.dataset.detailContent === tab));
+            if (tab === 'models') {
+                const accountId = document.getElementById('detailModal').dataset.accountId;
+                if (accountId) loadModels(accountId);
+            }
         }
         async function loadModels(id) {
             const container = document.getElementById('modelsList');
