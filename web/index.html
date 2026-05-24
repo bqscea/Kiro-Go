@@ -2899,7 +2899,11 @@
                     const notExhausted = a.usageLimit === 0 || a.usageCurrent < a.usageLimit;
                     if (!(isEnabled && notBanned && notExhausted)) return false;
                 }
-                if (filterStatus === 'enabled' && !a.enabled) return false;
+                if (filterStatus === 'enabled') {
+                    const notBanned = !a.banStatus || a.banStatus === 'ACTIVE';
+                    const notExhausted = a.usageLimit === 0 || a.usageCurrent < a.usageLimit;
+                    if (!a.enabled || !notBanned || !notExhausted) return false;
+                }
                 if (filterStatus === 'disabled' && (a.enabled || (a.banStatus && a.banStatus !== 'ACTIVE'))) return false;
                 if (filterStatus === 'standby') {
                     const notBanned = !a.banStatus || a.banStatus === 'ACTIVE';
@@ -2933,7 +2937,11 @@
                 const notExhausted = a.usageLimit === 0 || a.usageCurrent < a.usageLimit;
                 return isEnabled && notBanned && notExhausted;
             }).length;
-            const enabledCount = accountsData.filter(a => a.enabled).length;
+            const enabledCount = accountsData.filter(a => {
+                const notBanned = !a.banStatus || a.banStatus === 'ACTIVE';
+                const notExhausted = a.usageLimit === 0 || a.usageCurrent < a.usageLimit;
+                return a.enabled && notBanned && notExhausted;
+            }).length;
             const disabledCount = accountsData.filter(a => !a.enabled && (!a.banStatus || a.banStatus === 'ACTIVE')).length;
             const standbyCount = accountsData.filter(a => {
                 const notBanned = !a.banStatus || a.banStatus === 'ACTIVE';
