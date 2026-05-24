@@ -2792,8 +2792,9 @@
                 if (filterStatus === 'disabled' && (a.enabled || (a.banStatus && a.banStatus !== 'ACTIVE'))) return false;
                 if (filterStatus === 'banned' && (!a.banStatus || a.banStatus === 'ACTIVE')) return false;
                 if (filterStatus === 'exhausted') {
+                    const notBanned = !a.banStatus || a.banStatus === 'ACTIVE';
                     const isExhausted = a.usageLimit > 0 && a.usageCurrent >= a.usageLimit;
-                    if (!isExhausted) return false;
+                    if (!(notBanned && isExhausted)) return false;
                 }
                 if (filterGroup === '__default__') {
                     if (a.groups && a.groups.length > 0) return false;
@@ -2820,7 +2821,11 @@
             const enabledCount = accountsData.filter(a => a.enabled).length;
             const disabledCount = accountsData.filter(a => !a.enabled && (!a.banStatus || a.banStatus === 'ACTIVE')).length;
             const bannedCount = accountsData.filter(a => a.banStatus && a.banStatus !== 'ACTIVE').length;
-            const exhaustedCount = accountsData.filter(a => a.usageLimit > 0 && a.usageCurrent >= a.usageLimit).length;
+            const exhaustedCount = accountsData.filter(a => {
+                const notBanned = !a.banStatus || a.banStatus === 'ACTIVE';
+                const isExhausted = a.usageLimit > 0 && a.usageCurrent >= a.usageLimit;
+                return notBanned && isExhausted;
+            }).length;
 
             document.querySelectorAll('.status-tab').forEach(tab => {
                 const status = tab.dataset.status;
