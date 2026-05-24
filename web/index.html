@@ -1906,6 +1906,7 @@
                 'sso.tokenHint': '*支持批量导入，每行一个 Token',
                 'sso.tokenPlaceholder': '粘贴 x-amz-sso_authn 值',
                 'sso.importSuccess': '成功添加 {0} 个账号',
+                'sso.importSkipped': '，{0} 个已存在跳过',
                 'sso.importPartial': '，{0} 个失败',
                 'local.fileLocation': '文件位置',
                 'local.loginChannel': '登录渠道',
@@ -2377,6 +2378,7 @@
                 'sso.tokenHint': '*Supports batch import, one token per line',
                 'sso.tokenPlaceholder': 'Paste x-amz-sso_authn value',
                 'sso.importSuccess': 'Successfully added {0} accounts',
+                'sso.importSkipped': ', {0} already exist (skipped)',
                 'sso.importPartial': ', {0} failed',
                 'local.fileLocation': 'File Location',
                 'local.loginChannel': 'Login Channel',
@@ -4425,7 +4427,7 @@
                 } else {
                     items = Array.isArray(json) ? json : [json];
                 }
-                let success = 0, failed = 0, errors = [], newIds = [];
+                let success = 0, failed = 0, skipped = 0, errors = [], newIds = [];
                 for (const item of items) {
                     if (!item.refreshToken) { failed++; errors.push('missing refreshToken'); continue; }
                     // 映射 authMethod: IdC/idc -> idc, social -> social
@@ -4445,11 +4447,19 @@
                     try {
                         const res = await fetch('/admin/api/auth/credentials', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Admin-Password': password }, body: JSON.stringify(payload) });
                         const d = await res.json();
-                        if (d.success) { success++; if (d.account?.id) newIds.push(d.account.id); } else { failed++; errors.push(d.error || 'unknown'); }
+                        if (d.success) {
+                            if (d.skipped) {
+                                skipped++;
+                            } else {
+                                success++;
+                                if (d.account?.id) newIds.push(d.account.id);
+                            }
+                        } else { failed++; errors.push(d.error || 'unknown'); }
                     } catch { failed++; errors.push('request failed'); }
                 }
                 closeModal(); loadAccounts(); loadStats();
                 let msg = t('sso.importSuccess', success);
+                if (skipped > 0) msg += t('sso.importSkipped', skipped);
                 if (failed > 0) msg += t('sso.importPartial', failed);
                 alert(msg);
                 newIds.forEach(id => autoRefreshNewAccount(id));

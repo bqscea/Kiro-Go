@@ -3297,37 +3297,14 @@ func (h *Handler) apiImportCredentials(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if existingAccount != nil {
-		// 账号已存在，更新 token 信息
-		if err := config.UpdateAccountToken(existingAccount.ID, accessToken, req.RefreshToken, expiresAt); err != nil {
-			w.WriteHeader(500)
-			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-			return
-		}
-
-		// 更新 profileArn（如果有）
-		if newProfileArn != "" {
-			if err := config.UpdateAccountProfileArn(existingAccount.ID, newProfileArn); err != nil {
-				logger.Warnf("[ImportCredentials] Failed to update profileArn for %s: %v", email, err)
-			}
-		}
-
-		// 如果账号被禁用，重新启用
-		if !existingAccount.Enabled {
-			updatedAccount := *existingAccount
-			updatedAccount.Enabled = true
-			if err := config.UpdateAccount(existingAccount.ID, updatedAccount); err != nil {
-				logger.Warnf("[ImportCredentials] Failed to re-enable account %s: %v", email, err)
-			}
-		}
-
-		h.pool.Reload()
+		// 账号已存在，跳过导入
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": true,
 			"account": map[string]interface{}{
 				"id":    existingAccount.ID,
 				"email": existingAccount.Email,
 			},
-			"updated": true,
+			"skipped": true,
 		})
 		return
 	}
