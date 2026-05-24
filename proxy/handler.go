@@ -3286,7 +3286,53 @@ func (h *Handler) apiImportCredentials(w http.ResponseWriter, r *http.Request) {
 	// 获取用户信息
 	email, _, _ := auth.GetUserInfo(accessToken)
 
-	// 创建账号
+	// 检查是否已存在相同 email 的账号（去重）
+	existingAccounts := config.GetAccounts()
+	var existingAccount *config.Account
+	for i := range existingAccounts {
+		if existingAccounts[i].Email == email {
+			existingAccount = &existingAccounts[i]
+			break
+		}
+	}
+
+	if existingAccount != nil {
+		// 账号已存在，更新 token 信息
+		if err := config.UpdateAccountToken(existingAccount.ID, accessToken, req.RefreshToken, expiresAt); err != nil {
+			w.WriteHeader(500)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+
+		// 更新 profileArn（如果有）
+		if newProfileArn != "" {
+			if err := config.UpdateAccountProfileArn(existingAccount.ID, newProfileArn); err != nil {
+				logger.Warnf("[ImportCredentials] Failed to update profileArn for %s: %v", email, err)
+			}
+		}
+
+		// 如果账号被禁用，重新启用
+		if !existingAccount.Enabled {
+			updatedAccount := *existingAccount
+			updatedAccount.Enabled = true
+			if err := config.UpdateAccount(existingAccount.ID, updatedAccount); err != nil {
+				logger.Warnf("[ImportCredentials] Failed to re-enable account %s: %v", email, err)
+			}
+		}
+
+		h.pool.Reload()
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"account": map[string]interface{}{
+				"id":    existingAccount.ID,
+				"email": existingAccount.Email,
+			},
+			"updated": true,
+		})
+		return
+	}
+
+	// 账号不存在，创建新账号
 	account := config.Account{
 		ID:           auth.GenerateAccountID(),
 		Email:        email,
