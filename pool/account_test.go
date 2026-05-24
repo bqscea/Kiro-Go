@@ -36,7 +36,7 @@ func TestOverageAccountsCanBeSelectedWhenAllowed(t *testing.T) {
 
 	p.accounts = []config.Account{overLimit}
 
-	acc := p.GetNext()
+	acc := p.GetNext("")
 	if acc == nil {
 		t.Fatalf("expected allowed overage account")
 	}
@@ -64,7 +64,7 @@ func TestGetNextKeepsFiveMinuteTokenAvailable(t *testing.T) {
 
 	p.accounts = []config.Account{account}
 
-	got := p.GetNext()
+	got := p.GetNext("")
 	if got == nil {
 		t.Fatalf("expected five-minute token to be available")
 	}

@@ -1830,7 +1830,7 @@ func (h *Handler) handleOpenAIChat(w http.ResponseWriter, r *http.Request) {
 
 	actualModel, _ := ParseModelAndThinking(req.Model, config.GetThinkingConfig().Suffix)
 	allowedGroups := h.resolveAllowedGroups(r)
-	account := h.pool.GetNextForModelAndGroups(actualModel, allowedGroups)
+	account := h.pool.GetNextForModelAndGroups(actualModel, allowedGroups, r.RemoteAddr)
 	if account == nil {
 		if len(allowedGroups) > 0 {
 			h.sendOpenAIError(w, 503, "server_error", "No available accounts in allowed groups: "+strings.Join(allowedGroups, ","))

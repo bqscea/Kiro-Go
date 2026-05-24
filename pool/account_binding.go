@@ -6,10 +6,7 @@ import (
 	"time"
 )
 
-const (
-	clientBindingExpiry      = 30 * time.Minute // 30分钟无请求则解绑
-	tokenRefreshSkewSeconds  = 300              // token 刷新提前量（秒）
-)
+const clientBindingExpiry = 30 * time.Minute // 30分钟无请求则解绑
 
 // cleanupExpiredBindings 定期清理过期的客户端绑定
 func (p *AccountPool) cleanupExpiredBindings() {

@@ -52,7 +52,8 @@ func (re *RetryExecutor) ExecuteWithRetry(
 
 	for totalAttempts < re.config.MaxPerRequest {
 		// Get next available account (excluding failed ones)
-		acc := re.pool.GetNextForModelAndGroupsExcluding(model, allowedGroups, excludeIDs)
+		// 重试逻辑不保持客户端绑定，传空字符串
+		acc := re.pool.GetNextForModelAndGroupsExcluding(model, allowedGroups, excludeIDs, "")
 		if acc == nil {
 			return nil, fmt.Errorf("no available accounts after %d attempts (excluded: %d)", totalAttempts, len(excludeIDs))
 		}
