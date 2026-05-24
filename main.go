@@ -63,8 +63,11 @@ func main() {
 	// 启动服务器
 	addr := fmt.Sprintf("%s:%d", config.GetHost(), config.GetPort())
 	server := &http.Server{
-		Addr:    addr,
-		Handler: handler,
+		Addr:         addr,
+		Handler:      handler,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 5*time.Minute + 30*time.Second, // 5min streaming + 30s buffer
+		IdleTimeout:  120 * time.Second,
 	}
 
 	logger.Infof("Kiro-Go starting on http://%s (log level: %s)", addr, logger.LevelName(logger.GetLevel()))
