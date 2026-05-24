@@ -19,7 +19,7 @@ import (
 	"github.com/google/uuid"
 )
 
-const tokenRefreshSkewSeconds int64 = 120
+const tokenRefreshSkewSeconds int64 = 300 // 到期前5分钟刷新
 
 // Handler HTTP 处理器
 type Handler struct {
@@ -251,7 +251,7 @@ func NewHandler() *Handler {
 
 // backgroundRefresh 后台定时刷新账户信息
 func (h *Handler) backgroundRefresh() {
-	ticker := time.NewTicker(5 * time.Minute) // 每 5 分钟刷新一次（token 有效期 10 分钟，提前刷新）
+	ticker := time.NewTicker(3 * time.Minute) // 每 3 分钟扫描一次（到期前5分钟刷新，留2分钟余量）
 	defer ticker.Stop()
 
 	// 启动时延迟 10 秒后执行一次
@@ -274,7 +274,7 @@ func (h *Handler) backgroundRefresh() {
 func (h *Handler) refreshAllAccounts() {
 	accounts := config.GetAccounts()
 	now := time.Now().Unix()
-	const refreshInterval = 5 * 60 // 5 分钟（与后台刷新周期一致）
+	const refreshInterval = 30 * 60 // 30 分钟（账户信息刷新周期）
 
 	for i := range accounts {
 		account := &accounts[i]
