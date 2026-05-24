@@ -288,6 +288,10 @@ func (p *AccountPool) GetNextForModel(model string) *config.Account {
 		return nil
 	}
 
+	if config.GetLoadBalancingMode() == "priority" {
+		return p.getNextPriorityForModel(model)
+	}
+
 	allowOverUsage := config.GetAllowOverUsage()
 	now := time.Now()
 	n := len(p.accounts)
@@ -350,6 +354,144 @@ func (p *AccountPool) GetNextForModel(model string) *config.Account {
 			p.markInUse(acc.ID)
 			p.mu.RLock()
 			return acc
+		}
+	}
+	if best != nil {
+		p.mu.RUnlock()
+		p.markInUse(best.ID)
+		p.mu.RLock()
+	}
+	return best
+}
+
+// getNextPriorityForModel 按优先级顺序选择支持指定模型的账号（Weight 越大优先级越高）。
+// 调用方必须持有 p.mu.RLock。
+func (p *AccountPool) getNextPriorityForModel(model string) *config.Account {
+	uniqueAccounts := p.getUniqueSortedAccounts()
+	allowOverUsage := config.GetAllowOverUsage()
+	now := time.Now()
+
+	for _, acc := range uniqueAccounts {
+		if !groupPolicyAllowsModel(acc.Groups, model) {
+			continue
+		}
+		if !p.accountHasModel(acc.ID, model) {
+			continue
+		}
+		if cooldown, ok := p.cooldowns[acc.ID]; ok && now.Before(cooldown) {
+			continue
+		}
+		if acc.ExpiresAt > 0 && time.Now().Unix() > acc.ExpiresAt-tokenRefreshSkewSeconds {
+			continue
+		}
+		if isOverUsageLimit(acc) && !acc.AllowOverage && !allowOverUsage {
+			continue
+		}
+		p.mu.RUnlock()
+		p.markInUse(acc.ID)
+		p.mu.RLock()
+		return &acc
+	}
+
+	// fallback：找冷却时间最短且支持该模型的账号
+	var best *config.Account
+	var earliest time.Time
+	for i := range uniqueAccounts {
+		acc := &uniqueAccounts[i]
+		if !groupPolicyAllowsModel(acc.Groups, model) {
+			continue
+		}
+		if !p.accountHasModel(acc.ID, model) {
+			continue
+		}
+		if isOverUsageLimit(*acc) && !acc.AllowOverage && !allowOverUsage {
+			continue
+		}
+		if cooldown, ok := p.cooldowns[acc.ID]; ok {
+			if best == nil || cooldown.Before(earliest) {
+				best = &uniqueAccounts[i]
+				earliest = cooldown
+			}
+		} else {
+			p.mu.RUnlock()
+			p.markInUse(acc.ID)
+			p.mu.RLock()
+			return &uniqueAccounts[i]
+		}
+	}
+	if best != nil {
+		p.mu.RUnlock()
+		p.markInUse(best.ID)
+		p.mu.RLock()
+	}
+	return best
+}
+
+// getNextPriorityForModelAndGroups 按优先级顺序选择支持指定模型且属于允许分组的账号。
+// 调用方必须持有 p.mu.RLock。
+func (p *AccountPool) getNextPriorityForModelAndGroups(model string, allowedGroups []string, excludeIDs map[string]bool) *config.Account {
+	uniqueAccounts := p.getUniqueSortedAccounts()
+	allowOverUsage := config.GetAllowOverUsage()
+	now := time.Now()
+
+	for _, acc := range uniqueAccounts {
+		if excludeIDs != nil && excludeIDs[acc.ID] {
+			continue
+		}
+		if len(allowedGroups) > 0 && !groupAllowed(acc.Groups, allowedGroups) {
+			continue
+		}
+		if !groupPolicyAllowsModel(acc.Groups, model) {
+			continue
+		}
+		if !p.accountHasModel(acc.ID, model) {
+			continue
+		}
+		if cooldown, ok := p.cooldowns[acc.ID]; ok && now.Before(cooldown) {
+			continue
+		}
+		if acc.ExpiresAt > 0 && time.Now().Unix() > acc.ExpiresAt-tokenRefreshSkewSeconds {
+			continue
+		}
+		if isOverUsageLimit(acc) && !acc.AllowOverage && !allowOverUsage {
+			continue
+		}
+		p.mu.RUnlock()
+		p.markInUse(acc.ID)
+		p.mu.RLock()
+		return &acc
+	}
+
+	// fallback：找冷却时间最短且支持该模型 + group 的账号
+	var best *config.Account
+	var earliest time.Time
+	for i := range uniqueAccounts {
+		acc := &uniqueAccounts[i]
+		if excludeIDs != nil && excludeIDs[acc.ID] {
+			continue
+		}
+		if len(allowedGroups) > 0 && !groupAllowed(acc.Groups, allowedGroups) {
+			continue
+		}
+		if !groupPolicyAllowsModel(acc.Groups, model) {
+			continue
+		}
+		if !p.accountHasModel(acc.ID, model) {
+			continue
+		}
+		if isOverUsageLimit(*acc) && !acc.AllowOverage && !allowOverUsage {
+			continue
+		}
+		if cooldown, ok := p.cooldowns[acc.ID]; ok {
+			if best == nil || cooldown.Before(earliest) {
+				best = &uniqueAccounts[i]
+				earliest = cooldown
+			}
+		} else {
+			p.mu.RUnlock()
+			p.markInUse(acc.ID)
+			p.mu.RLock()
+			return &uniqueAccounts[i]
 		}
 	}
 	if best != nil {
@@ -680,6 +822,10 @@ func (p *AccountPool) GetNextForModelAndGroupsExcluding(model string, allowedGro
 
 	if len(p.accounts) == 0 {
 		return nil
+	}
+
+	if config.GetLoadBalancingMode() == "priority" {
+		return p.getNextPriorityForModelAndGroups(model, allowedGroups, excludeIDs)
 	}
 
 	allowOverUsage := config.GetAllowOverUsage()
