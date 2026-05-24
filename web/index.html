@@ -1255,6 +1255,7 @@
             <div class="tab" data-tab="backups" data-i18n="tabs.backups"></div>
             <div class="tab" data-tab="alerts" data-i18n="tabs.alerts"></div>
             <div class="tab" data-tab="requests" data-i18n="tabs.requests"></div>
+            <div class="tab" data-tab="stats" data-i18n="tabs.stats"></div>
         </div>
         <div id="tabAccounts" class="tab-content">
             <div class="card">
@@ -1632,6 +1633,12 @@
                 <div id="requestsList" style="padding:4px;max-height:600px;overflow-y:auto"></div>
             </div>
         </div>
+        <div id="tabStats" class="tab-content hidden">
+            <div class="card">
+                <div class="card-header"><span class="card-title" data-i18n="stats.accountEvents"></span></div>
+                <div id="statsAccountEvents" style="padding:4px;max-height:600px;overflow-y:auto"></div>
+            </div>
+        </div>
     </div>
     <div id="addModal" class="modal">
         <div class="modal-content">
@@ -1713,6 +1720,7 @@
                 'tabs.backups': '备份',
                 'tabs.alerts': '告警',
                 'tabs.requests': '请求记录',
+                'tabs.stats': '统计',
                 'accounts.title': '账号列表',
                 'accounts.add': '添加账号',
                 'accounts.import': '导入凭证',
@@ -2138,6 +2146,7 @@
                 'observe.modelTokens': 'Tokens (in / out)',
                 'observe.modelCredits': 'Credits',
                 'observe.accountEvents': '账号事件',
+                'stats.accountEvents': '账号事件',
                 'observe.eventTime': '时间',
                 'observe.eventAccount': '账号',
                 'observe.eventType': '类型',
@@ -2250,6 +2259,7 @@
                 'tabs.backups': 'Backups',
                 'tabs.alerts': 'Alerts',
                 'tabs.requests': 'Requests',
+                'tabs.stats': 'Statistics',
                 'accounts.title': 'Account List',
                 'accounts.add': 'Add Account',
                 'accounts.import': 'Import Credentials',
@@ -2666,6 +2676,7 @@
                 'observe.modelTokens': 'Tokens (in / out)',
                 'observe.modelCredits': 'Credits',
                 'observe.accountEvents': 'Account Events',
+                'stats.accountEvents': 'Account Events',
                 'observe.eventTime': 'Time',
                 'observe.eventAccount': 'Account',
                 'observe.eventType': 'Type',
@@ -4451,11 +4462,12 @@
             document.querySelectorAll('.tab').forEach(tabEl => tabEl.classList.toggle('active', tabEl.dataset.tab === tab));
             document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
             document.getElementById('tab' + tab.charAt(0).toUpperCase() + tab.slice(1)).classList.remove('hidden');
-            if (tab === 'observe') { startObserve(); stopBackups(); stopAlerts(); stopRequests(); }
-            else if (tab === 'backups') { startBackups(); stopObserve(); stopAlerts(); stopRequests(); }
-            else if (tab === 'alerts') { startAlerts(); stopObserve(); stopBackups(); stopRequests(); }
-            else if (tab === 'requests') { startRequests(); stopObserve(); stopBackups(); stopAlerts(); }
-            else { stopObserve(); stopBackups(); stopAlerts(); stopRequests(); }
+            if (tab === 'observe') { startObserve(); stopBackups(); stopAlerts(); stopRequests(); stopStats(); }
+            else if (tab === 'backups') { startBackups(); stopObserve(); stopAlerts(); stopRequests(); stopStats(); }
+            else if (tab === 'alerts') { startAlerts(); stopObserve(); stopBackups(); stopRequests(); stopStats(); }
+            else if (tab === 'requests') { startRequests(); stopObserve(); stopBackups(); stopAlerts(); stopStats(); }
+            else if (tab === 'stats') { startStats(); stopObserve(); stopBackups(); stopAlerts(); stopRequests(); }
+            else { stopObserve(); stopBackups(); stopAlerts(); stopRequests(); stopStats(); }
             try { localStorage.setItem('currentTab', tab); } catch (e) { }
         }
         async function toggleAccount(id, enabled) {
@@ -5160,6 +5172,8 @@
         let observeSSE = null;
         let observeActive = false;
         let requestsActive = false;
+        let statsActive = false;
+        let statsTimer = null;
 
         function fmtNum(n) {
             if (n == null) return '0';
@@ -5908,6 +5922,52 @@
         }
         function stopRequests() {
             requestsActive = false;
+        }
+
+        async function loadStatsAccountEvents() {
+            if (!statsActive) return;
+            try {
+                const events = await observeFetch('/admin/api/observe/account-events?limit=100');
+                renderStatsAccountEvents(events);
+            } catch (e) { /* silent */ }
+        }
+
+        function renderStatsAccountEvents(data) {
+            const el = document.getElementById('statsAccountEvents');
+            if (!el) return;
+            const events = (data && data.events) || [];
+            if (!events.length) { el.innerHTML = `<div style="color:#64748b;font-size:13px;padding:8px">${escapeHtml(t('observe.empty'))}</div>`; return; }
+            const head = `<thead><tr style="background:#f8fafc;text-align:left">
+                <th style="padding:6px 8px;font-size:12px">${escapeHtml(t('observe.eventTime'))}</th>
+                <th style="padding:6px 8px;font-size:12px">${escapeHtml(t('observe.eventAccount'))}</th>
+                <th style="padding:6px 8px;font-size:12px">${escapeHtml(t('observe.eventType'))}</th>
+                <th style="padding:6px 8px;font-size:12px">${escapeHtml(t('observe.eventMessage'))}</th>
+            </tr></thead>`;
+            const typeColors = { exhausted: '#f59e0b', banned: '#dc2626', silent: '#64748b', standby: '#2563eb' };
+            const body = events.map(e => {
+                const acct = e.email ? getDisplayEmail(e.email, e.accountId) : (e.accountId || '').slice(0, 8);
+                const typeKey = 'observe.event' + e.eventType.charAt(0).toUpperCase() + e.eventType.slice(1);
+                const typeLabel = t(typeKey) || e.eventType;
+                const color = typeColors[e.eventType] || '#475569';
+                return `<tr style="border-top:1px solid #f1f5f9">
+                    <td style="padding:6px 8px;font-size:12px;color:#475569;white-space:nowrap;font-family:ui-monospace,monospace">${escapeHtml(fmtTime(e.ts))}</td>
+                    <td style="padding:6px 8px;font-size:13px">${escapeHtml(acct)}</td>
+                    <td style="padding:6px 8px;font-size:12px;color:${color};font-weight:500">${escapeHtml(typeLabel)}</td>
+                    <td style="padding:6px 8px;font-size:12px;color:#475569">${escapeHtml(e.message || '-')}</td>
+                </tr>`;
+            }).join('');
+            el.innerHTML = `<table style="width:100%;border-collapse:collapse">${head}<tbody>${body}</tbody></table>`;
+        }
+
+        function startStats() {
+            statsActive = true;
+            loadStatsAccountEvents();
+            if (statsTimer) clearInterval(statsTimer);
+            statsTimer = setInterval(loadStatsAccountEvents, 10000);
+        }
+        function stopStats() {
+            statsActive = false;
+            if (statsTimer) { clearInterval(statsTimer); statsTimer = null; }
         }
     
         // 自定义弹窗系统
