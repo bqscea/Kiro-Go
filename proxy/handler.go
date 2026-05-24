@@ -251,7 +251,7 @@ func NewHandler() *Handler {
 
 // backgroundRefresh 后台定时刷新账户信息
 func (h *Handler) backgroundRefresh() {
-	ticker := time.NewTicker(30 * time.Minute) // 每 30 分钟刷新一次
+	ticker := time.NewTicker(5 * time.Minute) // 每 5 分钟刷新一次（token 有效期 10 分钟，提前刷新）
 	defer ticker.Stop()
 
 	// 启动时延迟 10 秒后执行一次
@@ -274,7 +274,7 @@ func (h *Handler) backgroundRefresh() {
 func (h *Handler) refreshAllAccounts() {
 	accounts := config.GetAccounts()
 	now := time.Now().Unix()
-	const refreshInterval = 30 * 60 // 30 分钟
+	const refreshInterval = 5 * 60 // 5 分钟（与后台刷新周期一致）
 
 	for i := range accounts {
 		account := &accounts[i]
