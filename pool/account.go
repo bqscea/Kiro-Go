@@ -20,13 +20,15 @@ const accountReservationDuration = 5 * time.Second
 
 // AccountPool 账号池
 type AccountPool struct {
-	mu            sync.RWMutex
-	accounts      []config.Account
-	totalAccounts int
-	currentIndex  uint64
-	cooldowns     map[string]time.Time       // 账号冷却时间
-	errorCounts   map[string]int             // 连续错误计数
-	modelLists    map[string]map[string]bool // accountID → set of modelIDs (from ListAvailableModels)
+	mu              sync.RWMutex
+	accounts        []config.Account
+	totalAccounts   int
+	currentIndex    uint64
+	cooldowns       map[string]time.Time       // 账号冷却时间
+	errorCounts     map[string]int             // 连续错误计数
+	modelLists      map[string]map[string]bool // accountID → set of modelIDs (from ListAvailableModels)
+	clientBindings  map[string]string          // clientIP:Port → accountID（会话级绑定）
+	bindingLastSeen map[string]time.Time       // clientIP:Port → 最后请求时间（30分钟无请求则解绑）
 }
 
 var (
@@ -38,9 +40,11 @@ var (
 func GetPool() *AccountPool {
 	poolOnce.Do(func() {
 		pool = &AccountPool{
-			cooldowns:   make(map[string]time.Time),
-			errorCounts: make(map[string]int),
-			modelLists:  make(map[string]map[string]bool),
+			cooldowns:       make(map[string]time.Time),
+			errorCounts:     make(map[string]int),
+			modelLists:      make(map[string]map[string]bool),
+			clientBindings:  make(map[string]string),
+			bindingLastSeen: make(map[string]time.Time),
 		}
 		pool.Reload()
 		// 加载持久化的冷却状态
@@ -48,6 +52,8 @@ func GetPool() *AccountPool {
 			// 加载失败不影响启动，仅记录日志
 			_ = err
 		}
+		// 启动绑定过期清理协程
+		go pool.cleanupExpiredBindings()
 	})
 	return pool
 }
@@ -77,12 +83,33 @@ func (p *AccountPool) Reload() {
 }
 
 // GetNext 获取下一个可用账号（根据 LoadBalancingMode 选择策略）
-func (p *AccountPool) GetNext() *config.Account {
-	mode := config.GetLoadBalancingMode()
-	if mode == "priority" {
-		return p.getNextPriority()
+// clientIP 为客户端标识（IP:Port），用于会话级账号绑定
+func (p *AccountPool) GetNext(clientIP string) *config.Account {
+	// 优先返回已绑定的账号
+	if clientIP != "" {
+		if boundAccountID := p.getBoundAccount(clientIP); boundAccountID != "" {
+			if acc := p.tryGetBoundAccount(boundAccountID, clientIP); acc != nil {
+				p.updateClientActivity(clientIP)
+				return acc
+			}
+			// 绑定的账号不可用，解绑
+			p.unbindClient(clientIP)
+		}
 	}
-	return p.getNextBalanced()
+
+	mode := config.GetLoadBalancingMode()
+	var acc *config.Account
+	if mode == "priority" {
+		acc = p.getNextPriority()
+	} else {
+		acc = p.getNextBalanced()
+	}
+
+	// 绑定新账号到客户端
+	if acc != nil && clientIP != "" {
+		p.bindClient(clientIP, acc.ID)
+	}
+	return acc
 }
 
 // getNextPriority 按优先级顺序选择账号（Weight 越大优先级越高）
@@ -279,8 +306,20 @@ func (p *AccountPool) accountHasModel(accountID, model string) bool {
 
 // GetNextForModel 获取下一个支持指定模型的可用账号。
 // model 应为去掉 thinking 后缀的实际模型名。
+// clientIP 为客户端标识（IP:Port），用于会话级账号绑定。
 // 若无账号有该模型列表数据，行为与 GetNext 相同（乐观路由）。
-func (p *AccountPool) GetNextForModel(model string) *config.Account {
+func (p *AccountPool) GetNextForModel(model string, clientIP string) *config.Account {
+	// 优先返回已绑定的账号（如果支持该模型）
+	if clientIP != "" {
+		if boundAccountID := p.getBoundAccount(clientIP); boundAccountID != "" {
+			if acc := p.tryGetBoundAccountForModel(boundAccountID, model, clientIP); acc != nil {
+				p.updateClientActivity(clientIP)
+				return acc
+			}
+			// 绑定的账号不可用或不支持该模型，解绑
+			p.unbindClient(clientIP)
+		}
+	}
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
@@ -352,6 +391,10 @@ func (p *AccountPool) GetNextForModel(model string) *config.Account {
 		} else {
 			p.mu.RUnlock()
 			p.markInUse(acc.ID)
+			// 绑定新账号到客户端
+			if clientIP != "" {
+				p.bindClient(clientIP, acc.ID)
+			}
 			p.mu.RLock()
 			return acc
 		}
@@ -359,6 +402,10 @@ func (p *AccountPool) GetNextForModel(model string) *config.Account {
 	if best != nil {
 		p.mu.RUnlock()
 		p.markInUse(best.ID)
+		// 绑定新账号到客户端
+		if clientIP != "" {
+			p.bindClient(clientIP, best.ID)
+		}
 		p.mu.RLock()
 	}
 	return best
@@ -806,15 +853,29 @@ func groupPolicyAllowsModel(accountGroups []string, model string) bool {
 
 // GetNextForModelAndGroups picks the next available account that supports the model
 // and whose group is permitted by allowedGroups. allowedGroups nil/empty = any group.
-func (p *AccountPool) GetNextForModelAndGroups(model string, allowedGroups []string) *config.Account {
-	return p.GetNextForModelAndGroupsExcluding(model, allowedGroups, nil)
+// clientIP 为客户端标识（IP:Port），用于会话级账号绑定。
+func (p *AccountPool) GetNextForModelAndGroups(model string, allowedGroups []string, clientIP string) *config.Account {
+	return p.GetNextForModelAndGroupsExcluding(model, allowedGroups, nil, clientIP)
 }
 
 // GetNextForModelAndGroupsExcluding picks the next available account, excluding specified IDs.
 // Used by retry logic to skip already-failed accounts.
-func (p *AccountPool) GetNextForModelAndGroupsExcluding(model string, allowedGroups []string, excludeIDs map[string]bool) *config.Account {
+// clientIP 为客户端标识（IP:Port），用于会话级账号绑定。
+func (p *AccountPool) GetNextForModelAndGroupsExcluding(model string, allowedGroups []string, excludeIDs map[string]bool, clientIP string) *config.Account {
 	if len(allowedGroups) == 0 && excludeIDs == nil {
-		return p.GetNextForModel(model)
+		return p.GetNextForModel(model, clientIP)
+	}
+
+	// 优先返回已绑定的账号（如果支持该模型且符合分组策略）
+	if clientIP != "" {
+		if boundAccountID := p.getBoundAccount(clientIP); boundAccountID != "" {
+			if acc := p.tryGetBoundAccountForModelAndGroups(boundAccountID, model, allowedGroups, excludeIDs, clientIP); acc != nil {
+				p.updateClientActivity(clientIP)
+				return acc
+			}
+			// 绑定的账号不可用或不符合条件，解绑
+			p.unbindClient(clientIP)
+		}
 	}
 
 	p.mu.RLock()
@@ -902,6 +963,10 @@ func (p *AccountPool) GetNextForModelAndGroupsExcluding(model string, allowedGro
 		} else {
 			p.mu.RUnlock()
 			p.markInUse(acc.ID)
+			// 绑定新账号到客户端
+			if clientIP != "" {
+				p.bindClient(clientIP, acc.ID)
+			}
 			p.mu.RLock()
 			return acc
 		}
@@ -909,6 +974,10 @@ func (p *AccountPool) GetNextForModelAndGroupsExcluding(model string, allowedGro
 	if best != nil {
 		p.mu.RUnlock()
 		p.markInUse(best.ID)
+		// 绑定新账号到客户端
+		if clientIP != "" {
+			p.bindClient(clientIP, best.ID)
+		}
 		p.mu.RLock()
 	}
 	return best

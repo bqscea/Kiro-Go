@@ -329,8 +329,17 @@ func (h *Handler) refreshAllAccounts() {
 			continue
 		}
 
+		// 检测额度耗尽状态变化
+		wasExhausted := account.UsageLimit > 0 && account.UsageCurrent >= account.UsageLimit
+		nowExhausted := info.UsageLimit > 0 && info.UsageCurrent >= info.UsageLimit
+
 		config.UpdateAccountInfo(account.ID, *info)
 		logger.Infof("[BackgroundRefresh] Refreshed %s: %s %.1f/%.1f", account.Email, info.SubscriptionType, info.UsageCurrent, info.UsageLimit)
+
+		// 记录额度耗尽事件
+		if !wasExhausted && nowExhausted {
+			getObserveStore().RecordAccountEvent(account.ID, account.Email, "exhausted", "Usage limit reached")
+		}
 	}
 	h.pool.Reload()
 }
@@ -799,6 +808,9 @@ func (h *Handler) refreshModelsCache() {
 				if updateErr := config.UpdateAccount(account.ID, updatedAccount); updateErr != nil {
 					logger.Errorf("[ModelsCache] Failed to update account ban status: %v", updateErr)
 				}
+
+				// 记录封禁事件
+				getObserveStore().RecordAccountEvent(account.ID, account.Email, "banned", updatedAccount.BanReason)
 			}
 			continue
 		}
@@ -842,6 +854,9 @@ func (h *Handler) fetchAndCacheAccountModels(account *config.Account) error {
 			if updateErr := config.UpdateAccount(account.ID, updatedAccount); updateErr != nil {
 				logger.Errorf("[fetchAndCacheAccountModels] Failed to update account ban status: %v", updateErr)
 			}
+
+			// 记录封禁事件
+			getObserveStore().RecordAccountEvent(account.ID, account.Email, "banned", updatedAccount.BanReason)
 		}
 		return err
 	}
@@ -1054,7 +1069,7 @@ func (h *Handler) handleClaudeMessagesInternal(w http.ResponseWriter, r *http.Re
 	// 获取账号（按模型过滤 + 按 API Key 允许的 group 过滤）
 	actualModel, _ := ParseModelAndThinking(req.Model, config.GetThinkingConfig().Suffix)
 	allowedGroups := h.resolveAllowedGroups(r)
-	account := h.pool.GetNextForModelAndGroups(actualModel, allowedGroups)
+	account := h.pool.GetNextForModelAndGroups(actualModel, allowedGroups, r.RemoteAddr)
 	if account == nil {
 		if len(allowedGroups) > 0 {
 			h.sendClaudeError(w, 503, "api_error", "No available accounts in allowed groups: "+strings.Join(allowedGroups, ","))
@@ -2509,6 +2524,8 @@ func (h *Handler) handleAdminAPI(w http.ResponseWriter, r *http.Request) {
 		h.apiObserveRecentErrors(w, r)
 	case path == "/observe/recent-requests" && r.Method == "GET":
 		h.apiObserveRecentRequests(w, r)
+	case path == "/observe/account-events" && r.Method == "GET":
+		h.apiObserveAccountEvents(w, r)
 	case path == "/alerts" && r.Method == "GET":
 		h.apiAlertsList(w, r)
 	case path == "/alerts" && r.Method == "POST":
@@ -2981,8 +2998,18 @@ func (h *Handler) apiBatchAccounts(w http.ResponseWriter, r *http.Request) {
 				failCount++
 				continue
 			}
+
+			// 检测额度耗尽状态变化
+			wasExhausted := account.UsageLimit > 0 && account.UsageCurrent >= account.UsageLimit
+			nowExhausted := info.UsageLimit > 0 && info.UsageCurrent >= info.UsageLimit
+
 			config.UpdateAccountInfo(id, *info)
 			successCount++
+
+			// 记录额度耗尽事件
+			if !wasExhausted && nowExhausted {
+				getObserveStore().RecordAccountEvent(id, account.Email, "exhausted", "Usage limit reached")
+			}
 		}
 		h.pool.Reload()
 		json.NewEncoder(w).Encode(map[string]interface{}{
@@ -3728,8 +3755,17 @@ func (h *Handler) refreshAccountInfoAsync(accountID string) {
 		return
 	}
 
+	// 检测额度耗尽状态变化
+	wasExhausted := account.UsageLimit > 0 && account.UsageCurrent >= account.UsageLimit
+	nowExhausted := info.UsageLimit > 0 && info.UsageCurrent >= info.UsageLimit
+
 	config.UpdateAccountInfo(accountID, *info)
 	logger.Infof("[RefreshAccountInfoAsync] Refreshed %s: %s %.1f/%.1f", account.Email, info.SubscriptionType, info.UsageCurrent, info.UsageLimit)
+
+	// 记录额度耗尽事件
+	if !wasExhausted && nowExhausted {
+		getObserveStore().RecordAccountEvent(accountID, account.Email, "exhausted", "Usage limit reached")
+	}
 }
 
 // apiRefreshAccount 刷新账户信息（使用量、订阅等）
@@ -3801,11 +3837,20 @@ func (h *Handler) apiRefreshAccount(w http.ResponseWriter, r *http.Request, id s
 		return
 	}
 
+	// 检测额度耗尽状态变化
+	wasExhausted := account.UsageLimit > 0 && account.UsageCurrent >= account.UsageLimit
+	nowExhausted := info.UsageLimit > 0 && info.UsageCurrent >= info.UsageLimit
+
 	// 保存到配置
 	if err := config.UpdateAccountInfo(id, *info); err != nil {
 		w.WriteHeader(500)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
+	}
+
+	// 记录额度耗尽事件
+	if !wasExhausted && nowExhausted {
+		getObserveStore().RecordAccountEvent(id, account.Email, "exhausted", "Usage limit reached")
 	}
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -3926,6 +3971,9 @@ func (h *Handler) apiGetAccountModels(w http.ResponseWriter, r *http.Request, id
 			if updateErr := config.UpdateAccount(account.ID, updatedAccount); updateErr != nil {
 				logger.Errorf("[apiRefreshAccountModels] Failed to update account ban status: %v", updateErr)
 			}
+
+			// 记录封禁事件
+			getObserveStore().RecordAccountEvent(account.ID, account.Email, "banned", updatedAccount.BanReason)
 		}
 
 		w.WriteHeader(500)

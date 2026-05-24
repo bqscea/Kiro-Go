@@ -14,7 +14,7 @@ func TestOverageAccountsAreSkippedByDefault(t *testing.T) {
 	p.accounts = []config.Account{normal, overLimit}
 
 	for i := 0; i < 5; i++ {
-		acc := p.GetNext()
+		acc := p.GetNext("")
 		if acc == nil {
 			t.Fatalf("expected an account")
 		}

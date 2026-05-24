@@ -112,3 +112,15 @@ func (h *Handler) apiObserveRecentErrors(w http.ResponseWriter, r *http.Request)
 	errs := getObserveStore().RecentErrors(limit)
 	json.NewEncoder(w).Encode(map[string]interface{}{"errors": errs})
 }
+
+// apiObserveAccountEvents GET /admin/api/observe/account-events?limit=100
+func (h *Handler) apiObserveAccountEvents(w http.ResponseWriter, r *http.Request) {
+	limit := 100
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			limit = n
+		}
+	}
+	events := getObserveStore().RecentAccountEvents(limit)
+	json.NewEncoder(w).Encode(map[string]interface{}{"events": events})
+}

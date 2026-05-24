@@ -1566,6 +1566,10 @@
                 <div id="observeModelMix" style="padding:4px"></div>
             </div>
             <div class="card">
+                <div class="card-header"><span class="card-title" data-i18n="observe.accountEvents"></span></div>
+                <div id="observeAccountEvents" style="padding:4px;max-height:360px;overflow-y:auto"></div>
+            </div>
+            <div class="card">
                 <div class="card-header"><span class="card-title" data-i18n="observe.recentErrors"></span></div>
                 <div id="observeRecentErrors" style="padding:4px;max-height:360px;overflow-y:auto"></div>
             </div>
@@ -2133,6 +2137,15 @@
                 'observe.modelReqs': '请求',
                 'observe.modelTokens': 'Tokens (in / out)',
                 'observe.modelCredits': 'Credits',
+                'observe.accountEvents': '账号事件',
+                'observe.eventTime': '时间',
+                'observe.eventAccount': '账号',
+                'observe.eventType': '类型',
+                'observe.eventMessage': '详情',
+                'observe.eventExhausted': '额度耗尽',
+                'observe.eventBanned': '账号封禁',
+                'observe.eventSilent': '静默',
+                'observe.eventStandby': '待命',
                 'observe.recentErrors': '最近错误',
                 'observe.errTime': '时间',
                 'observe.errAccount': '账号',
@@ -2652,6 +2665,15 @@
                 'observe.modelReqs': 'Reqs',
                 'observe.modelTokens': 'Tokens (in / out)',
                 'observe.modelCredits': 'Credits',
+                'observe.accountEvents': 'Account Events',
+                'observe.eventTime': 'Time',
+                'observe.eventAccount': 'Account',
+                'observe.eventType': 'Type',
+                'observe.eventMessage': 'Details',
+                'observe.eventExhausted': 'Exhausted',
+                'observe.eventBanned': 'Banned',
+                'observe.eventSilent': 'Silent',
+                'observe.eventStandby': 'Standby',
                 'observe.recentErrors': 'Recent Errors',
                 'observe.errTime': 'Time',
                 'observe.errAccount': 'Account',
@@ -5177,17 +5199,19 @@
         async function loadObserve() {
             if (!observeActive) return;
             try {
-                const [overview, heatmap, keys, mix, errs] = await Promise.all([
+                const [overview, heatmap, keys, mix, events, errs] = await Promise.all([
                     observeFetch('/admin/api/observe/overview'),
                     observeFetch('/admin/api/observe/account-heatmap?windowMin=60'),
                     observeFetch('/admin/api/observe/keys'),
                     observeFetch('/admin/api/observe/model-mix'),
+                    observeFetch('/admin/api/observe/account-events?limit=100'),
                     observeFetch('/admin/api/observe/recent-errors?limit=100'),
                 ]);
                 renderObserveOverview(overview);
                 renderObserveHeatmap(heatmap);
                 renderObserveKeys(keys);
                 renderObserveModelMix(mix);
+                renderObserveAccountEvents(events);
                 renderObserveErrors(errs);
             } catch (e) { /* silent: avoid noisy alerts on transient failures */ }
         }
@@ -5332,6 +5356,33 @@
                             <span style="font-size:12px;color:#475569;min-width:80px;text-align:right">${fmtNum(m.credits)} (${pct.toFixed(1)}%)</span>
                         </div>
                     </td>
+                </tr>`;
+            }).join('');
+            el.innerHTML = `<table style="width:100%;border-collapse:collapse">${head}<tbody>${body}</tbody></table>`;
+        }
+
+        function renderObserveAccountEvents(data) {
+            const el = document.getElementById('observeAccountEvents');
+            if (!el) return;
+            const events = (data && data.events) || [];
+            if (!events.length) { el.innerHTML = `<div style="color:#64748b;font-size:13px;padding:8px">${escapeHtml(t('observe.empty'))}</div>`; return; }
+            const head = `<thead><tr style="background:#f8fafc;text-align:left">
+                <th style="padding:6px 8px;font-size:12px">${escapeHtml(t('observe.eventTime'))}</th>
+                <th style="padding:6px 8px;font-size:12px">${escapeHtml(t('observe.eventAccount'))}</th>
+                <th style="padding:6px 8px;font-size:12px">${escapeHtml(t('observe.eventType'))}</th>
+                <th style="padding:6px 8px;font-size:12px">${escapeHtml(t('observe.eventMessage'))}</th>
+            </tr></thead>`;
+            const typeColors = { exhausted: '#f59e0b', banned: '#dc2626', silent: '#64748b', standby: '#2563eb' };
+            const body = events.map(e => {
+                const acct = e.email ? getDisplayEmail(e.email, e.accountId) : (e.accountId || '').slice(0, 8);
+                const typeKey = 'observe.event' + e.eventType.charAt(0).toUpperCase() + e.eventType.slice(1);
+                const typeLabel = t(typeKey) || e.eventType;
+                const color = typeColors[e.eventType] || '#475569';
+                return `<tr style="border-top:1px solid #f1f5f9">
+                    <td style="padding:6px 8px;font-size:12px;color:#475569;white-space:nowrap;font-family:ui-monospace,monospace">${escapeHtml(fmtTime(e.ts))}</td>
+                    <td style="padding:6px 8px;font-size:13px">${escapeHtml(acct)}</td>
+                    <td style="padding:6px 8px;font-size:12px;color:${color};font-weight:500">${escapeHtml(typeLabel)}</td>
+                    <td style="padding:6px 8px;font-size:12px;color:#475569">${escapeHtml(e.message || '-')}</td>
                 </tr>`;
             }).join('');
             el.innerHTML = `<table style="width:100%;border-collapse:collapse">${head}<tbody>${body}</tbody></table>`;

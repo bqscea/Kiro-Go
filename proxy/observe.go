@@ -61,6 +61,15 @@ type requestRecord struct {
 	IP               string  `json:"ip,omitempty"` // 请求来源 IP
 }
 
+// accountEventRecord 账号事件记录（封禁、额度耗尽）
+type accountEventRecord struct {
+	TS        int64  `json:"ts"`
+	AccountID string `json:"accountId"`
+	Email     string `json:"email,omitempty"`
+	EventType string `json:"eventType"` // "banned" | "exhausted"
+	Reason    string `json:"reason,omitempty"`
+}
+
 // observeStore 全局只读单例，写入加锁。
 type observeStore struct {
 	mu              sync.RWMutex
@@ -72,6 +81,8 @@ type observeStore struct {
 	recentErrIdx    int
 	recentRequests  []requestRecord // 循环写入
 	recentReqIdx    int
+	accountEvents   []accountEventRecord // 账号事件流（封禁、耗尽）
+	accountEventIdx int
 	maxAccountRing  int // 上限保护，超过则不再新建账号桶（按 LRU 淘汰）
 	accountTouched  map[string]int64
 }
@@ -89,6 +100,7 @@ func getObserveStore() *observeStore {
 			modelStats:      make(map[string]*modelStat),
 			recentErrors:    make([]errorRecord, observeRecentErrs),
 			recentRequests:  make([]requestRecord, observeRecentReqs),
+			accountEvents:   make([]accountEventRecord, 100), // 最近 100 条事件
 			maxAccountRing:  200,
 			accountTouched:  make(map[string]int64),
 		}
@@ -466,6 +478,46 @@ func (s *observeStore) RecentErrors(limit int) []errorRecord {
 	for i := 0; i < observeRecentErrs && len(out) < limit; i++ {
 		idx := (s.recentErrIdx - 1 - i + observeRecentErrs) % observeRecentErrs
 		rec := s.recentErrors[idx]
+		if rec.TS == 0 {
+			continue
+		}
+		out = append(out, rec)
+	}
+	return out
+}
+
+// RecordAccountEvent 记录账号事件（封禁、额度耗尽）
+func (s *observeStore) RecordAccountEvent(accountID, email, eventType, reason string) {
+	if s == nil {
+		return
+	}
+	rec := accountEventRecord{
+		TS:        time.Now().Unix(),
+		AccountID: accountID,
+		Email:     email,
+		EventType: eventType,
+		Reason:    reason,
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.accountEvents[s.accountEventIdx] = rec
+	s.accountEventIdx = (s.accountEventIdx + 1) % len(s.accountEvents)
+}
+
+// RecentAccountEvents 返回最近的账号事件（最新的在前）
+func (s *observeStore) RecentAccountEvents(limit int) []accountEventRecord {
+	if s == nil {
+		return nil
+	}
+	if limit <= 0 || limit > len(s.accountEvents) {
+		limit = len(s.accountEvents)
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]accountEventRecord, 0, limit)
+	for i := 0; i < len(s.accountEvents) && len(out) < limit; i++ {
+		idx := (s.accountEventIdx - 1 - i + len(s.accountEvents)) % len(s.accountEvents)
+		rec := s.accountEvents[idx]
 		if rec.TS == 0 {
 			continue
 		}
