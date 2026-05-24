@@ -1631,6 +1631,10 @@
         <div id="tabRequests" class="tab-content hidden">
             <div class="card">
                 <div class="card-header"><span class="card-title" data-i18n="requests.title"></span></div>
+                <div style="padding:12px;display:flex;gap:8px;flex-wrap:wrap;border-bottom:1px solid #e2e8f0">
+                    <input type="text" id="filterAccount" data-i18n-placeholder="requests.filterAccount" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;flex:1;min-width:150px" oninput="loadRequests()">
+                    <input type="text" id="filterIP" data-i18n-placeholder="requests.filterIP" style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;flex:1;min-width:150px" oninput="loadRequests()">
+                </div>
                 <div id="requestsList" style="padding:4px;max-height:600px;overflow-y:auto"></div>
             </div>
         </div>
@@ -2237,6 +2241,8 @@
                 'requests.remaining': '剩余额度',
                 'requests.ip': 'IP',
                 'requests.status': '状态',
+                'requests.filterAccount': '筛选账号',
+                'requests.filterIP': '筛选IP',
                 'requests.success': '成功',
                 'requests.failed': '失败'
             },
@@ -5896,7 +5902,24 @@
                 headers: { 'X-Admin-Password': password }
             });
             const data = await res.json();
-            const reqs = data.requests || [];
+            let reqs = data.requests || [];
+
+            const filterAccount = document.getElementById('filterAccount')?.value.toLowerCase().trim();
+            const filterIP = document.getElementById('filterIP')?.value.toLowerCase().trim();
+
+            if (filterAccount) {
+                reqs = reqs.filter(r => {
+                    const account = (r.email || r.accountId || '').toLowerCase();
+                    return account.includes(filterAccount);
+                });
+            }
+            if (filterIP) {
+                reqs = reqs.filter(r => {
+                    const ip = (r.ip || '').toLowerCase();
+                    return ip.includes(filterIP);
+                });
+            }
+
             const html = reqs.length === 0 ? `<div style="padding:12px;color:#64748b">${t('requests.empty')}</div>` :
                 `<table style="width:100%;border-collapse:collapse;font-size:13px">
                     <thead><tr style="border-bottom:2px solid #e2e8f0;text-align:left">
