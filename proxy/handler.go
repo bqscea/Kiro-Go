@@ -246,6 +246,8 @@ func NewHandler() *Handler {
 	go h.backgroundAlertChecker()
 	// 启动后台冷却状态保存 (每 5min 保存一次)
 	go h.backgroundCooldownSaver()
+	// 启动每日零点 BanTime 清零 (每 1min 检查)
+	go h.backgroundBanTimeResetter()
 	return h
 }
 
