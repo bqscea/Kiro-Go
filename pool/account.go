@@ -4,6 +4,7 @@ package pool
 
 import (
 	"kiro-go/config"
+	"kiro-go/logger"
 	"sort"
 	"strings"
 	"sync"
@@ -72,6 +73,7 @@ func (p *AccountPool) Reload() {
 	}
 	p.accounts = weighted
 	p.totalAccounts = len(enabled)
+	logger.Infof("[Pool] Loaded %d enabled accounts (%d weighted slots)", len(enabled), len(weighted))
 }
 
 // GetNext 获取下一个可用账号（根据 LoadBalancingMode 选择策略）

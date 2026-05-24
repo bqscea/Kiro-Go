@@ -2640,6 +2640,28 @@ func (h *Handler) apiAddAccount(w http.ResponseWriter, r *http.Request) {
 		account.Region = "us-east-1"
 	}
 
+	// 导入时刷新 token 以获取有效期和最新凭证
+	if account.RefreshToken != "" {
+		newAccessToken, newRefreshToken, newExpiresAt, newProfileArn, err := auth.RefreshToken(&account)
+		if err == nil {
+			account.AccessToken = newAccessToken
+			if newRefreshToken != "" {
+				account.RefreshToken = newRefreshToken
+			}
+			account.ExpiresAt = newExpiresAt
+			if newProfileArn != "" {
+				account.ProfileArn = newProfileArn
+			}
+			// 刷新成功后获取用户信息
+			if account.Email == "" {
+				email, userId, _ := auth.GetUserInfo(newAccessToken)
+				account.Email = email
+				account.UserId = userId
+			}
+		}
+		// 刷新失败不阻塞导入，但 token 可能已过期
+	}
+
 	if err := config.AddAccount(account); err != nil {
 		w.WriteHeader(500)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
