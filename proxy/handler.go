@@ -287,6 +287,15 @@ func (h *Handler) refreshAllAccounts() {
 			continue
 		}
 
+		// 随机延迟 1-15 秒，避免大量账号同时刷新
+		needsRefresh := (account.ExpiresAt > 0 && time.Now().Unix() > account.ExpiresAt-tokenRefreshSkewSeconds) ||
+			(account.LastRefresh > 0 && now-account.LastRefresh >= refreshInterval) ||
+			account.LastRefresh == 0
+		if needsRefresh {
+			delay := time.Duration(1+time.Now().UnixNano()%15) * time.Second
+			time.Sleep(delay)
+		}
+
 		// 检查 token 是否需要刷新
 		if account.ExpiresAt > 0 && time.Now().Unix() > account.ExpiresAt-tokenRefreshSkewSeconds {
 			newAccessToken, newRefreshToken, newExpiresAt, profileArn, err := auth.RefreshToken(account)
