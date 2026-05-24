@@ -1268,6 +1268,7 @@
                                 <span class="slider"></span>
                             </label>
                         </div>
+                        <button class="btn btn-secondary btn-sm" onclick="loadAccounts()" data-i18n="accounts.refresh"></button>
                         <button class="btn btn-secondary btn-sm" onclick="showExportModal()" data-i18n="accounts.export"></button>
                         <button class="btn btn-secondary btn-sm" onclick="showImportModal()" data-i18n="accounts.import"></button>
                         <button class="btn btn-secondary btn-sm" onclick="refreshAllModels()" data-i18n="models.refreshAll"></button>
@@ -2984,16 +2985,13 @@
         }
         function clearFilters() {
             filterKeyword = '';
-            filterStatus = 'all';
             filterGroup = 'all';
             sortField = '';
             document.getElementById('filterSearch').value = '';
-            switchStatusTab('all');
             document.getElementById('filterGroupSelect').value = 'all';
             document.getElementById('sortSelect').value = '';
             try {
                 localStorage.removeItem('filterKeyword');
-                localStorage.removeItem('filterStatus');
                 localStorage.removeItem('filterGroup');
                 localStorage.removeItem('sortField');
             } catch (e) { }

@@ -3473,9 +3473,9 @@ func (h *Handler) apiUpdatePromptFilter(w http.ResponseWriter, r *http.Request) 
 
 func (h *Handler) apiUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		ApiKey             string `json:"apiKey"`
-		RequireApiKey      bool   `json:"requireApiKey"`
-		Password           string `json:"password"`
+		ApiKey             *string `json:"apiKey,omitempty"`
+		RequireApiKey      *bool   `json:"requireApiKey,omitempty"`
+		Password           string  `json:"password,omitempty"`
 		AllowOverUsage     *bool  `json:"allowOverUsage,omitempty"`
 		LoadBalancingMode  string `json:"loadBalancingMode,omitempty"`
 	}
@@ -3485,10 +3485,20 @@ func (h *Handler) apiUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := config.UpdateSettings(req.ApiKey, req.RequireApiKey, req.Password); err != nil {
-		w.WriteHeader(500)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-		return
+	if req.ApiKey != nil || req.RequireApiKey != nil || req.Password != "" {
+		apiKey := ""
+		if req.ApiKey != nil {
+			apiKey = *req.ApiKey
+		}
+		requireApiKey := false
+		if req.RequireApiKey != nil {
+			requireApiKey = *req.RequireApiKey
+		}
+		if err := config.UpdateSettings(apiKey, requireApiKey, req.Password); err != nil {
+			w.WriteHeader(500)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
 	}
 
 	// 更新超额使用设置
