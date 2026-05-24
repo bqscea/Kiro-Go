@@ -1456,6 +1456,10 @@ func (h *Handler) handleClaudeStream(w http.ResponseWriter, r *http.Request, acc
 		h.pool.RecordError(account.ID, isQuotaError(err))
 		h.autoSilentIfSuspended(account.ID, err)
 		h.checkOverageError(err, account.ID)
+		// 配额错误时异步刷新账号信息，更新额度状态
+		if isQuotaError(err) {
+			go h.refreshAccountInfoAsync(account.ID)
+		}
 		h.sendSSE(w, flusher, "error", map[string]interface{}{
 			"type":  "error",
 			"error": map[string]string{"type": "api_error", "message": err.Error()},
@@ -1701,6 +1705,10 @@ func (h *Handler) handleClaudeNonStream(w http.ResponseWriter, r *http.Request, 
 		h.pool.RecordError(account.ID, isQuotaError(err))
 		h.autoSilentIfSuspended(account.ID, err)
 		h.checkOverageError(err, account.ID)
+		// 配额错误时异步刷新账号信息，更新额度状态
+		if isQuotaError(err) {
+			go h.refreshAccountInfoAsync(account.ID)
+		}
 		h.sendClaudeError(w, 500, "api_error", err.Error())
 		return
 	}
@@ -2162,6 +2170,10 @@ func (h *Handler) handleOpenAIStream(w http.ResponseWriter, r *http.Request, acc
 		h.pool.RecordError(account.ID, isQuotaError(err))
 		h.autoSilentIfSuspended(account.ID, err)
 		h.checkOverageError(err, account.ID)
+		// 配额错误时异步刷新账号信息，更新额度状态
+		if isQuotaError(err) {
+			go h.refreshAccountInfoAsync(account.ID)
+		}
 		return
 	}
 
@@ -2261,6 +2273,10 @@ func (h *Handler) handleOpenAINonStream(w http.ResponseWriter, r *http.Request, 
 		h.pool.RecordError(account.ID, isQuotaError(err))
 		h.autoSilentIfSuspended(account.ID, err)
 		h.checkOverageError(err, account.ID)
+		// 配额错误时异步刷新账号信息，更新额度状态
+		if isQuotaError(err) {
+			go h.refreshAccountInfoAsync(account.ID)
+		}
 		h.sendOpenAIError(w, 500, "server_error", err.Error())
 		return
 	}
@@ -3661,6 +3677,59 @@ func (h *Handler) apiTestAccount(w http.ResponseWriter, r *http.Request, id stri
 		"reply":   content,
 		"model":   req.Model,
 	})
+}
+
+// refreshAccountInfoAsync 异步刷新账号信息（配额错误时调用）
+func (h *Handler) refreshAccountInfoAsync(accountID string) {
+	accounts := config.GetAccounts()
+	var account *config.Account
+	for i := range accounts {
+		if accounts[i].ID == accountID {
+			account = &accounts[i]
+			break
+		}
+	}
+	if account == nil {
+		return
+	}
+
+	// 从 pool 取运行时最新 token
+	if latest := h.pool.GetByID(accountID); latest != nil {
+		account.AccessToken = latest.AccessToken
+		account.RefreshToken = latest.RefreshToken
+		account.ExpiresAt = latest.ExpiresAt
+		account.ProfileArn = latest.ProfileArn
+	}
+
+	// 刷新 token（如需）
+	if account.ExpiresAt > 0 && time.Now().Unix() > account.ExpiresAt-tokenRefreshSkewSeconds {
+		if account.RefreshToken != "" {
+			newAccessToken, newRefreshToken, newExpiresAt, profileArn, err := auth.RefreshToken(account)
+			if err == nil {
+				account.AccessToken = newAccessToken
+				if newRefreshToken != "" {
+					account.RefreshToken = newRefreshToken
+				}
+				account.ExpiresAt = newExpiresAt
+				config.UpdateAccountToken(accountID, newAccessToken, newRefreshToken, newExpiresAt)
+				h.pool.UpdateToken(accountID, newAccessToken, newRefreshToken, newExpiresAt)
+				if profileArn != "" {
+					account.ProfileArn = profileArn
+					config.UpdateAccountProfileArn(accountID, profileArn)
+				}
+			}
+		}
+	}
+
+	// 刷新账户信息
+	info, err := RefreshAccountInfo(account)
+	if err != nil {
+		logger.Warnf("[RefreshAccountInfoAsync] Failed to refresh %s: %v", account.Email, err)
+		return
+	}
+
+	config.UpdateAccountInfo(accountID, *info)
+	logger.Infof("[RefreshAccountInfoAsync] Refreshed %s: %s %.1f/%.1f", account.Email, info.SubscriptionType, info.UsageCurrent, info.UsageLimit)
 }
 
 // apiRefreshAccount 刷新账户信息（使用量、订阅等）
