@@ -1004,6 +1004,7 @@ func (h *Handler) handleCountTokens(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	defer r.Body.Close()
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		h.sendClaudeError(w, 400, "invalid_request_error", "Failed to read request body")
@@ -1046,6 +1047,7 @@ func (h *Handler) handleClaudeMessagesInternal(w http.ResponseWriter, r *http.Re
 	}
 
 	// 读取请求
+	defer r.Body.Close()
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		h.sendClaudeError(w, 400, "invalid_request_error", "Failed to read request body")
@@ -1808,6 +1810,7 @@ func (h *Handler) handleOpenAIChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	defer r.Body.Close()
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		h.sendOpenAIError(w, 400, "invalid_request_error", "Failed to read request body")
