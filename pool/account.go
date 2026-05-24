@@ -85,7 +85,7 @@ func (p *AccountPool) GetNext() *config.Account {
 	return p.getNextBalanced()
 }
 
-// getNextPriority 按优先级顺序选择账号（Weight 越小优先级越高）
+// getNextPriority 按优先级顺序选择账号（Weight 越大优先级越高）
 func (p *AccountPool) getNextPriority() *config.Account {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
