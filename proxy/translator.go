@@ -269,7 +269,7 @@ func ClaudeToKiro(req *ClaudeRequest, thinking bool) *KiroPayload {
 	}
 
 	if len(history) > 0 {
-		payload.ConversationState.History = history
+		payload.ConversationState.History = truncateHistory(history, 20)
 	}
 
 	if req.MaxTokens > 0 || req.Temperature > 0 || req.TopP > 0 {
@@ -1077,7 +1077,7 @@ func OpenAIToKiro(req *OpenAIRequest, thinking bool) *KiroPayload {
 	}
 
 	if len(history) > 0 {
-		payload.ConversationState.History = history
+		payload.ConversationState.History = truncateHistory(history, 20)
 	}
 
 	if req.MaxTokens > 0 || req.Temperature > 0 || req.TopP > 0 {
@@ -1577,4 +1577,24 @@ func KiroToOpenAIResponseWithReasoning(content, reasoningContent string, toolUse
 			"total_tokens":      inputTokens + outputTokens,
 		},
 	}
+}
+
+// truncateHistory 截断 history，保留最近 maxRounds 轮对话
+// 一轮 = user + assistant 配对，避免服务端 CONTENT_LENGTH_EXCEEDS_THRESHOLD
+func truncateHistory(history []KiroHistoryMessage, maxRounds int) []KiroHistoryMessage {
+	if len(history) == 0 || maxRounds <= 0 {
+		return history
+	}
+
+	// 计算轮数：user + assistant = 1 轮
+	rounds := 0
+	for i := len(history) - 1; i >= 0; i-- {
+		if history[i].UserInputMessage != nil {
+			rounds++
+		}
+		if rounds > maxRounds {
+			return history[i+1:]
+		}
+	}
+	return history
 }
