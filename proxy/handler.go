@@ -2753,6 +2753,14 @@ func (h *Handler) apiUpdateAccount(w http.ResponseWriter, r *http.Request, id st
 		}
 		existing.Groups = groups
 	}
+	if v, ok := updates["standby"].(bool); ok {
+		existing.Standby = v
+		if v {
+			existing.StandbyTime = time.Now().Unix()
+		} else {
+			existing.StandbyTime = 0
+		}
+	}
 
 	if err := config.UpdateAccount(id, *existing); err != nil {
 		w.WriteHeader(500)
@@ -2799,6 +2807,7 @@ func (h *Handler) apiBatchAccounts(w http.ResponseWriter, r *http.Request) {
 		for _, id := range req.IDs {
 			idSet[id] = true
 		}
+		successCount := 0
 		for _, a := range accounts {
 			if idSet[a.ID] {
 				a.Standby = standby
@@ -2807,11 +2816,13 @@ func (h *Handler) apiBatchAccounts(w http.ResponseWriter, r *http.Request) {
 				} else {
 					a.StandbyTime = 0
 				}
-				config.UpdateAccount(a.ID, a)
+				if err := config.UpdateAccount(a.ID, a); err == nil {
+					successCount++
+				}
 			}
 		}
 		h.pool.Reload()
-		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "count": len(req.IDs)})
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "count": successCount})
 
 	case "setSilent", "removeSilent":
 		silent := req.Action == "setSilent"
