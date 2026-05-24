@@ -14,9 +14,10 @@ const observeDataFile = "data/observe/observe.json"
 
 // observePersistData 持久化数据结构
 type observePersistData struct {
-	SavedAt        int64           `json:"savedAt"`
-	RecentRequests []requestRecord `json:"recentRequests"`
-	RecentErrors   []errorRecord   `json:"recentErrors"`
+	SavedAt        int64                 `json:"savedAt"`
+	RecentRequests []requestRecord       `json:"recentRequests"`
+	RecentErrors   []errorRecord         `json:"recentErrors"`
+	AccountEvents  []accountEventRecord  `json:"accountEvents"`
 }
 
 // Save 保存观测数据到磁盘
@@ -43,12 +44,22 @@ func (s *observeStore) Save() error {
 		}
 		errs = append(errs, rec)
 	}
+	events := make([]accountEventRecord, 0, len(s.accountEvents))
+	for i := 0; i < len(s.accountEvents); i++ {
+		idx := (s.accountEventIdx - 1 - i + len(s.accountEvents)) % len(s.accountEvents)
+		rec := s.accountEvents[idx]
+		if rec.TS == 0 {
+			continue
+		}
+		events = append(events, rec)
+	}
 	s.mu.RUnlock()
 
 	data := observePersistData{
 		SavedAt:        time.Now().Unix(),
 		RecentRequests: reqs,
 		RecentErrors:   errs,
+		AccountEvents:  events,
 	}
 
 	dir := filepath.Dir(observeDataFile)
@@ -97,7 +108,13 @@ func (s *observeStore) Load() error {
 		s.recentErrIdx = (s.recentErrIdx + 1) % observeRecentErrs
 	}
 
-	logger.Infof("[Observe] Loaded %d requests, %d errors from %s", len(persist.RecentRequests), len(persist.RecentErrors), observeDataFile)
+	// 恢复账号事件
+	for i := len(persist.AccountEvents) - 1; i >= 0; i-- {
+		s.accountEvents[s.accountEventIdx] = persist.AccountEvents[i]
+		s.accountEventIdx = (s.accountEventIdx + 1) % len(s.accountEvents)
+	}
+
+	logger.Infof("[Observe] Loaded %d requests, %d errors, %d events from %s", len(persist.RecentRequests), len(persist.RecentErrors), len(persist.AccountEvents), observeDataFile)
 	return nil
 }
 
