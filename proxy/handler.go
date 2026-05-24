@@ -3404,27 +3404,33 @@ func (h *Handler) apiImportCredentials(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) apiGetStatus(w http.ResponseWriter, r *http.Request) {
-	// 统计封禁账号与额度耗尽账号
 	accounts := config.GetAccounts()
 	totalBanned := 0
 	todayBanned := 0
 	totalExhausted := 0
+	availableAccounts := 0
 	todayStart := time.Now().Truncate(24 * time.Hour).Unix()
 
 	for _, a := range accounts {
-		if a.BanStatus != "" && a.BanStatus != "ACTIVE" {
+		isBanned := a.BanStatus != "" && a.BanStatus != "ACTIVE"
+		isExhausted := a.UsageLimit > 0 && a.UsageCurrent >= a.UsageLimit
+
+		if isBanned {
 			totalBanned++
 			if a.BanTime >= todayStart {
 				todayBanned++
 			}
 		}
-		if a.UsageLimit > 0 && a.UsageCurrent >= a.UsageLimit {
+		if !isBanned && isExhausted {
 			totalExhausted++
+		}
+		if a.Enabled && !a.Silent && !a.Standby && !isBanned && !isExhausted {
+			availableAccounts++
 		}
 	}
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"accounts":        h.pool.Count(),
+		"accounts":        availableAccounts,
 		"available":       h.pool.AvailableCount(),
 		"totalRequests":   h.totalRequests,
 		"successRequests": h.successRequests,
