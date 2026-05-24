@@ -252,21 +252,6 @@ func RefreshAccountInfo(account *config.Account) (*config.AccountInfo, error) {
 		return nil, fmt.Errorf("GetUsageLimits: %w", err)
 	}
 
-	// 如果成功获取信息，清除封禁状态（如果之前被标记）
-	if account.BanStatus != "" && account.BanStatus != "ACTIVE" {
-		logger.Infof("[RefreshAccountInfo] Account %s is now active, clearing ban status", account.Email)
-
-		updatedAccount := *account
-		updatedAccount.BanStatus = "ACTIVE"
-		updatedAccount.BanReason = ""
-		updatedAccount.BanTime = 0
-
-		// 保存更新后的账户状态
-		if updateErr := config.UpdateAccount(account.ID, updatedAccount); updateErr != nil {
-			logger.Errorf("[RefreshAccountInfo] Failed to clear account ban status: %v", updateErr)
-		}
-	}
-
 	// 解析用户信息
 	if usage.UserInfo != nil {
 		info.Email = usage.UserInfo.Email
@@ -333,6 +318,27 @@ func RefreshAccountInfo(account *config.Account) (*config.AccountInfo, error) {
 					info.TrialExpiresAt = int64(f)
 				}
 			}
+		}
+	}
+
+	// 如果账号之前被封禁，通过模型列表验证是否真正恢复
+	if account.BanStatus != "" && account.BanStatus != "ACTIVE" {
+		_, modelsErr := ListAvailableModels(account)
+		if modelsErr == nil {
+			// 模型列表加载成功，账号确实恢复，清除封禁状态
+			logger.Infof("[RefreshAccountInfo] Account %s models accessible, clearing ban status", account.Email)
+
+			updatedAccount := *account
+			updatedAccount.BanStatus = "ACTIVE"
+			updatedAccount.BanReason = ""
+			updatedAccount.BanTime = 0
+
+			if updateErr := config.UpdateAccount(account.ID, updatedAccount); updateErr != nil {
+				logger.Errorf("[RefreshAccountInfo] Failed to clear account ban status: %v", updateErr)
+			}
+		} else {
+			// 模型列表加载失败，账号仍然不可用，保持封禁状态
+			logger.Warnf("[RefreshAccountInfo] Account %s still banned, models not accessible: %v", account.Email, modelsErr)
 		}
 	}
 
