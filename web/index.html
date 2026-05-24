@@ -2901,7 +2901,10 @@
                 }
                 if (filterStatus === 'enabled' && !a.enabled) return false;
                 if (filterStatus === 'disabled' && (a.enabled || (a.banStatus && a.banStatus !== 'ACTIVE'))) return false;
-                if (filterStatus === 'standby' && !a.standby) return false;
+                if (filterStatus === 'standby') {
+                    const notBanned = !a.banStatus || a.banStatus === 'ACTIVE';
+                    if (!a.standby || !notBanned) return false;
+                }
                 if (filterStatus === 'banned' && (!a.banStatus || a.banStatus === 'ACTIVE')) return false;
                 if (filterStatus === 'exhausted') {
                     const notBanned = !a.banStatus || a.banStatus === 'ACTIVE';
@@ -2932,7 +2935,10 @@
             }).length;
             const enabledCount = accountsData.filter(a => a.enabled).length;
             const disabledCount = accountsData.filter(a => !a.enabled && (!a.banStatus || a.banStatus === 'ACTIVE')).length;
-            const standbyCount = accountsData.filter(a => a.standby).length;
+            const standbyCount = accountsData.filter(a => {
+                const notBanned = !a.banStatus || a.banStatus === 'ACTIVE';
+                return a.standby && notBanned;
+            }).length;
             const bannedCount = accountsData.filter(a => a.banStatus && a.banStatus !== 'ACTIVE').length;
             const exhaustedCount = accountsData.filter(a => {
                 const notBanned = !a.banStatus || a.banStatus === 'ACTIVE';
