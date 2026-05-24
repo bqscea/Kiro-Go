@@ -3433,7 +3433,7 @@ func (h *Handler) apiGetStatus(w http.ResponseWriter, r *http.Request) {
 		if !isBanned && isExhausted {
 			totalExhausted++
 		}
-		if a.Enabled && !a.Silent && !a.Standby && !isBanned && !isExhausted {
+		if a.Enabled && !isBanned && !isExhausted {
 			availableAccounts++
 		}
 	}
