@@ -3630,6 +3630,16 @@ func (h *Handler) apiResetStats(w http.ResponseWriter, r *http.Request) {
 	h.creditsMu.Unlock()
 	config.UpdateStats(0, 0, 0, 0, 0)
 	getObserveStore().Reset()
+
+	// 清零所有账号的 BanTime，避免历史封禁计入今日统计
+	accounts := config.GetAccounts()
+	for i := range accounts {
+		if accounts[i].BanTime > 0 {
+			accounts[i].BanTime = 0
+			config.UpdateAccount(accounts[i].ID, accounts[i])
+		}
+	}
+
 	json.NewEncoder(w).Encode(map[string]bool{"success": true})
 }
 
