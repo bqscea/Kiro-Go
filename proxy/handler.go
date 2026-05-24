@@ -2792,6 +2792,27 @@ func (h *Handler) apiBatchAccounts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch req.Action {
+	case "setStandby", "removeStandby":
+		standby := req.Action == "setStandby"
+		accounts := config.GetAccounts()
+		idSet := make(map[string]bool)
+		for _, id := range req.IDs {
+			idSet[id] = true
+		}
+		for _, a := range accounts {
+			if idSet[a.ID] {
+				a.Standby = standby
+				if standby {
+					a.StandbyTime = time.Now().Unix()
+				} else {
+					a.StandbyTime = 0
+				}
+				config.UpdateAccount(a.ID, a)
+			}
+		}
+		h.pool.Reload()
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "count": len(req.IDs)})
+
 	case "setSilent", "removeSilent":
 		silent := req.Action == "setSilent"
 		accounts := config.GetAccounts()

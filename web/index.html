@@ -1326,6 +1326,11 @@
                     </div>
                     <div class="filter-divider"></div>
                     <div class="batch-group">
+                        <button class="btn btn-sm btn-secondary" onclick="batchSetStandby()" style="background:#f59e0b;color:#fff" data-i18n="batch.setStandby"></button>
+                        <button class="btn btn-sm btn-secondary" onclick="batchRemoveStandby()" data-i18n="batch.removeStandby"></button>
+                    </div>
+                    <div class="filter-divider"></div>
+                    <div class="batch-group">
                         <button class="btn btn-sm btn-secondary" onclick="batchDelete()" style="background:#dc2626;color:#fff" data-i18n="batch.delete"></button>
                     </div>
                 </div>
@@ -1829,6 +1834,7 @@
                 'detail.tabConfig': '配置',
                 'detail.tabSubscription': '订阅',
                 'detail.tabStats': '统计',
+                'detail.tabStandby': '备用',
                 'detail.tabModels': '模型',
                 'detail.basicInfo': '基本信息',
                 'detail.status': '状态',
@@ -1855,6 +1861,16 @@
                 'detail.models': '可用模型',
                 'detail.loadModels': '加载',
                 'detail.refreshModelCache': '刷新路由缓存',
+                'detail.standbyStatus': '备用状态',
+                'detail.standbyMode': '备用模式',
+                'detail.standbyActive': '已启用',
+                'detail.standbyInactive': '未启用',
+                'detail.standbyTime': '设置时间',
+                'detail.standbyHint': '备用账号只刷新 Token 和配额信息，不会被用于请求调度',
+                'detail.setStandby': '加入备用',
+                'detail.removeStandby': '移除备用',
+                'detail.standbySet': '已加入备用',
+                'detail.standbyRemoved': '已移除备用',
                 'detail.loading': '加载中...',
                 'detail.noModels': '无可用模型',
                 'detail.loadFailed': '加载失败',
@@ -1999,6 +2015,12 @@
                 'batch.delete': '批量删除',
                 'batch.confirmDelete': '确定删除 {0} 个账号？此操作不可恢复！',
                 'batch.deleteResult': '删除完成：成功 {0}，失败 {1}',
+                'batch.setStandby': '加入备用',
+                'batch.removeStandby': '移除备用',
+                'batch.confirmSetStandby': '确定将 {0} 个账号加入备用？备用账号只刷新不调用',
+                'batch.confirmRemoveStandby': '确定将 {0} 个账号移除备用？',
+                'batch.setStandbyResult': '已将 {0} 个账号加入备用',
+                'batch.removeStandbyResult': '已将 {0} 个账号移除备用',
                 'batch.done': '操作完成',
                 'filter.search': '搜索邮箱/昵称...',
                 'filter.all': '全部',
@@ -2305,6 +2327,7 @@
                 'detail.tabConfig': 'Config',
                 'detail.tabSubscription': 'Subscription',
                 'detail.tabStats': 'Stats',
+                'detail.tabStandby': 'Standby',
                 'detail.tabModels': 'Models',
                 'detail.basicInfo': 'Basic Info',
                 'detail.status': 'Status',
@@ -2327,6 +2350,16 @@
                 'detail.models': 'Available Models',
                 'detail.loadModels': 'Load',
                 'detail.refreshModelCache': 'Refresh Route Cache',
+                'detail.standbyStatus': 'Standby Status',
+                'detail.standbyMode': 'Standby Mode',
+                'detail.standbyActive': 'Active',
+                'detail.standbyInactive': 'Inactive',
+                'detail.standbyTime': 'Set Time',
+                'detail.standbyHint': 'Standby accounts only refresh tokens and quotas, not used for request routing',
+                'detail.setStandby': 'Set Standby',
+                'detail.removeStandby': 'Remove Standby',
+                'detail.standbySet': 'Standby mode enabled',
+                'detail.standbyRemoved': 'Standby mode disabled',
                 'detail.loading': 'Loading...',
                 'detail.noModels': 'No models available',
                 'detail.loadFailed': 'Load failed',
@@ -2471,6 +2504,12 @@
                 'batch.delete': 'Batch Delete',
                 'batch.confirmDelete': 'Delete {0} accounts? This action cannot be undone!',
                 'batch.deleteResult': 'Delete done: {0} success, {1} failed',
+                'batch.setStandby': 'Set Standby',
+                'batch.removeStandby': 'Remove Standby',
+                'batch.confirmSetStandby': 'Set {0} accounts to standby? Standby accounts only refresh, not used for routing',
+                'batch.confirmRemoveStandby': 'Remove {0} accounts from standby?',
+                'batch.setStandbyResult': '{0} accounts set to standby',
+                'batch.removeStandbyResult': '{0} accounts removed from standby',
                 'batch.done': 'Done',
                 'filter.search': 'Search email/nickname...',
                 'filter.all': 'All',
@@ -3124,6 +3163,52 @@
             loadAccounts();
             loadStats();
         }
+        async function batchSetStandby() {
+            const ids = Array.from(selectedAccounts);
+            if (ids.length === 0) return;
+            if (!confirm(t('batch.confirmSetStandby', ids.length))) return;
+            try {
+                const res = await fetch('/admin/api/accounts/batch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-Admin-Password': password },
+                    body: JSON.stringify({ ids, action: 'setStandby' })
+                });
+                const d = await res.json();
+                if (d.success) {
+                    alert(t('batch.setStandbyResult', d.count || ids.length));
+                    selectedAccounts.clear();
+                    updateBatchBar();
+                    loadAccounts();
+                } else {
+                    alert(t('common.failed') + ': ' + (d.error || ''));
+                }
+            } catch (e) {
+                alert(t('common.failed'));
+            }
+        }
+        async function batchRemoveStandby() {
+            const ids = Array.from(selectedAccounts);
+            if (ids.length === 0) return;
+            if (!confirm(t('batch.confirmRemoveStandby', ids.length))) return;
+            try {
+                const res = await fetch('/admin/api/accounts/batch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-Admin-Password': password },
+                    body: JSON.stringify({ ids, action: 'removeStandby' })
+                });
+                const d = await res.json();
+                if (d.success) {
+                    alert(t('batch.removeStandbyResult', d.count || ids.length));
+                    selectedAccounts.clear();
+                    updateBatchBar();
+                    loadAccounts();
+                } else {
+                    alert(t('common.failed') + ': ' + (d.error || ''));
+                }
+            } catch (e) {
+                alert(t('common.failed'));
+            }
+        }
         async function refreshAllModels() {
             if (!confirm(t('models.confirmRefreshAll'))) return;
             try {
@@ -3377,6 +3462,16 @@
                 '<div class="detail-item"><div class="detail-label">' + t('detail.totalCredits') + '</div><div class="detail-value">' + (a.totalCredits || 0).toFixed(2) + '</div></div>' +
                 '</div>';
 
+            const standbyTab = '<div class="detail-section">' +
+                '<h4>' + t('detail.standbyStatus') + '</h4>' +
+                '<div class="detail-grid" style="margin-bottom:16px">' +
+                '<div class="detail-item"><div class="detail-label">' + t('detail.standbyMode') + '</div><div class="detail-value">' + (a.standby ? '<span style="color:#f59e0b">✓ ' + t('detail.standbyActive') + '</span>' : '<span style="color:#64748b">' + t('detail.standbyInactive') + '</span>') + '</div></div>' +
+                (a.standbyTime ? '<div class="detail-item"><div class="detail-label">' + t('detail.standbyTime') + '</div><div class="detail-value">' + new Date(a.standbyTime * 1000).toLocaleString() + '</div></div>' : '') +
+                '</div>' +
+                '<p style="color:#64748b;font-size:13px;margin-bottom:12px">' + t('detail.standbyHint') + '</p>' +
+                '<button class="btn btn-sm ' + (a.standby ? 'btn-secondary' : 'btn-primary') + '" onclick="toggleStandby(\'' + id + '\', ' + !a.standby + ')" style="' + (a.standby ? '' : 'background:#f59e0b;color:#fff') + '">' + (a.standby ? t('detail.removeStandby') : t('detail.setStandby')) + '</button>' +
+                '</div>';
+
             const modelsTab = '<div style="margin-bottom:12px">' +
                 '<button class="btn btn-sm btn-secondary" onclick="loadModels(\'' + id + '\')">' + t('detail.loadModels') + '</button> ' +
                 '<button class="btn btn-sm btn-secondary" onclick="refreshAccountModels(\'' + id + '\')" style="margin-left:4px">' + t('detail.refreshModelCache') + '</button>' +
@@ -3388,12 +3483,14 @@
                 '<div class="detail-tab" data-detail-tab="config" onclick="switchDetailTab(\'config\')">' + t('detail.tabConfig') + '</div>' +
                 '<div class="detail-tab" data-detail-tab="subscription" onclick="switchDetailTab(\'subscription\')">' + t('detail.tabSubscription') + '</div>' +
                 '<div class="detail-tab" data-detail-tab="stats" onclick="switchDetailTab(\'stats\')">' + t('detail.tabStats') + '</div>' +
+                '<div class="detail-tab" data-detail-tab="standby" onclick="switchDetailTab(\'standby\')">' + t('detail.tabStandby') + '</div>' +
                 '<div class="detail-tab" data-detail-tab="models" onclick="switchDetailTab(\'models\')">' + t('detail.tabModels') + '</div>' +
                 '</div>' +
                 '<div class="detail-tab-content active" data-detail-content="basic">' + basicTab + '</div>' +
                 '<div class="detail-tab-content" data-detail-content="config">' + configTab + '</div>' +
                 '<div class="detail-tab-content" data-detail-content="subscription">' + subscriptionTab + '</div>' +
                 '<div class="detail-tab-content" data-detail-content="stats">' + statsTab + '</div>' +
+                '<div class="detail-tab-content" data-detail-content="standby">' + standbyTab + '</div>' +
                 '<div class="detail-tab-content" data-detail-content="models">' + modelsTab + '</div>';
 
             document.getElementById('detailModal').classList.add('active');
@@ -3494,6 +3591,25 @@
                 const d = await res.json();
                 if (d.success) { alert(t('detail.proxySaved')); loadAccounts(); } else { alert(t('detail.saveFailed') + ': ' + d.error); }
             } catch (e) { alert(t('detail.saveFailed')); }
+        }
+        async function toggleStandby(id, standby) {
+            try {
+                const res = await fetch('/admin/api/accounts/' + id, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', 'X-Admin-Password': password },
+                    body: JSON.stringify({ standby })
+                });
+                const d = await res.json();
+                if (d.success) {
+                    alert(standby ? t('detail.standbySet') : t('detail.standbyRemoved'));
+                    closeDetailModal();
+                    loadAccounts();
+                } else {
+                    alert(t('detail.saveFailed') + ': ' + (d.error || ''));
+                }
+            } catch (e) {
+                alert(t('detail.saveFailed'));
+            }
         }
         let currentGroupAccountId = null;
         let currentBatchGroupIds = null;

@@ -75,6 +75,8 @@ type Account struct {
 	Silent       bool   `json:"silent,omitempty"`       // Silent mode: account is disabled but not banned
 	SilentReason string `json:"silentReason,omitempty"` // Reason for silent mode
 	SilentTime   int64  `json:"silentTime,omitempty"`   // Timestamp when silent mode was set
+	Standby      bool   `json:"standby,omitempty"`      // Standby mode: account is refreshed but not used for requests
+	StandbyTime  int64  `json:"standbyTime,omitempty"`  // Timestamp when standby mode was set
 	BanStatus    string `json:"banStatus,omitempty"`    // Ban status: "ACTIVE", "BANNED", "SUSPENDED"
 	BanReason    string `json:"banReason,omitempty"`    // Reason for ban/suspension
 	BanTime      int64  `json:"banTime,omitempty"`      // Timestamp when ban was detected
@@ -407,7 +409,7 @@ func GetEnabledAccounts() []Account {
 	all := GetAccounts()
 	var accounts []Account
 	for _, a := range all {
-		if a.Enabled && !a.Silent && (a.BanStatus == "" || a.BanStatus == "ACTIVE") {
+		if a.Enabled && !a.Silent && !a.Standby && (a.BanStatus == "" || a.BanStatus == "ACTIVE") {
 			accounts = append(accounts, a)
 		}
 	}
