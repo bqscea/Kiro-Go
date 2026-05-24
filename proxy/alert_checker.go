@@ -46,6 +46,10 @@ func (h *Handler) evaluateRule(rule config.AlertRule) (bool, float64) {
 		return h.checkAccountFail(cond, store)
 	case "model_fail":
 		return h.checkModelFail(cond, store)
+	case "account_banned":
+		return h.checkAccountBanned(cond)
+	case "quota_exhausted":
+		return h.checkQuotaExhausted(cond)
 	default:
 		return false, 0
 	}
@@ -155,6 +159,50 @@ func (h *Handler) checkModelFail(cond config.AlertCondition, store *observeStore
 	}
 	// modelStat 当前无 errors 字段，无法计算失败率
 	// 需要在 observe.go 中补充 modelStat.Failures 字段
+	return false, 0
+}
+
+// checkAccountBanned 检查账号封禁状态
+func (h *Handler) checkAccountBanned(cond config.AlertCondition) (bool, float64) {
+	accounts := config.GetAccounts()
+	var bannedCount float64
+	for _, acc := range accounts {
+		if cond.Target == "global" || cond.Target == "" || cond.Target == acc.ID {
+			if acc.BanStatus == "BANNED" || acc.BanStatus == "SUSPENDED" {
+				bannedCount++
+				if cond.Target != "global" && cond.Target != "" {
+					return true, 1.0
+				}
+			}
+		}
+	}
+	if cond.Target == "global" || cond.Target == "" {
+		return bannedCount >= cond.Threshold, bannedCount
+	}
+	return false, 0
+}
+
+// checkQuotaExhausted 检查账号额度耗尽
+func (h *Handler) checkQuotaExhausted(cond config.AlertCondition) (bool, float64) {
+	accounts := config.GetAccounts()
+	var exhaustedCount float64
+	for _, acc := range accounts {
+		if cond.Target == "global" || cond.Target == "" || cond.Target == acc.ID {
+			usagePercent := acc.UsagePercent
+			if acc.TrialStatus == "ACTIVE" && acc.TrialUsagePercent > usagePercent {
+				usagePercent = acc.TrialUsagePercent
+			}
+			if usagePercent >= cond.Threshold {
+				exhaustedCount++
+				if cond.Target != "global" && cond.Target != "" {
+					return true, usagePercent
+				}
+			}
+		}
+	}
+	if cond.Target == "global" || cond.Target == "" {
+		return exhaustedCount >= cond.Threshold, exhaustedCount
+	}
 	return false, 0
 }
 

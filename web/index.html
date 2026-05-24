@@ -1678,6 +1678,13 @@
             <div id="batchGroupSelectBody"></div>
         </div>
     </div>
+    <div id="alertRuleModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header"><span class="modal-title" id="alertRuleModalTitle"></span><button
+                    class="modal-close" onclick="closeAlertRuleModal()">&times;</button></div>
+            <div id="alertRuleModalBody"></div>
+        </div>
+    </div>
     <script>
         const i18n = {
             zh: {
@@ -2169,11 +2176,32 @@
                 'backups.kindPreRestore': '回滚前',
                 'alerts.rules': '告警规则',
                 'alerts.create': '创建规则',
+                'alerts.edit': '编辑规则',
                 'alerts.history': '告警历史',
                 'alerts.noRules': '暂无规则',
                 'alerts.noHistory': '暂无历史',
                 'alerts.test': '测试',
                 'alerts.confirmDelete': '确定删除此规则？',
+                'alerts.name': '规则名称',
+                'alerts.namePlaceholder': '输入规则名称',
+                'alerts.enabled': '启用',
+                'alerts.conditionType': '条件类型',
+                'alerts.accountBanned': '账号封禁',
+                'alerts.quotaExhausted': '额度耗尽',
+                'alerts.threshold': '阈值',
+                'alerts.window': '时间窗口（分钟）',
+                'alerts.target': '目标',
+                'alerts.targetGlobal': '全局',
+                'alerts.targetAccount': '账号 ID',
+                'alerts.targetModel': '模型名称',
+                'alerts.actions': '告警动作',
+                'alerts.actionWebhook': 'Webhook',
+                'alerts.actionLogsse': 'SSE 推送',
+                'alerts.webhookUrl': 'Webhook URL',
+                'alerts.webhookUrlPlaceholder': 'https://example.com/webhook',
+                'alerts.cooldown': '冷却时间（秒）',
+                'alerts.submit': '保存',
+                'alerts.cancel': '取消',
                 'requests.title': '请求记录',
                 'requests.empty': '暂无记录',
                 'requests.time': '时间',
@@ -2181,6 +2209,8 @@
                 'requests.model': '模型',
                 'requests.tokens': 'Tokens',
                 'requests.credits': 'Credits',
+                'requests.remaining': '剩余额度',
+                'requests.ip': 'IP',
                 'requests.status': '状态',
                 'requests.success': '成功',
                 'requests.failed': '失败'
@@ -2665,11 +2695,32 @@
                 'backups.kindPreRestore': 'Pre-restore',
                 'alerts.rules': 'Alert Rules',
                 'alerts.create': 'Create Rule',
+                'alerts.edit': 'Edit Rule',
                 'alerts.history': 'Alert History',
                 'alerts.noRules': 'No rules',
                 'alerts.noHistory': 'No history',
                 'alerts.test': 'Test',
                 'alerts.confirmDelete': 'Delete this rule?',
+                'alerts.name': 'Rule Name',
+                'alerts.namePlaceholder': 'Enter rule name',
+                'alerts.enabled': 'Enabled',
+                'alerts.conditionType': 'Condition Type',
+                'alerts.accountBanned': 'Account Banned',
+                'alerts.quotaExhausted': 'Quota Exhausted',
+                'alerts.threshold': 'Threshold',
+                'alerts.window': 'Time Window (minutes)',
+                'alerts.target': 'Target',
+                'alerts.targetGlobal': 'Global',
+                'alerts.targetAccount': 'Account ID',
+                'alerts.targetModel': 'Model Name',
+                'alerts.actions': 'Alert Actions',
+                'alerts.actionWebhook': 'Webhook',
+                'alerts.actionLogsse': 'SSE Push',
+                'alerts.webhookUrl': 'Webhook URL',
+                'alerts.webhookUrlPlaceholder': 'https://example.com/webhook',
+                'alerts.cooldown': 'Cooldown (seconds)',
+                'alerts.submit': 'Save',
+                'alerts.cancel': 'Cancel',
                 'requests.title': 'Request History',
                 'requests.empty': 'No requests',
                 'requests.time': 'Time',
@@ -2677,6 +2728,8 @@
                 'requests.model': 'Model',
                 'requests.tokens': 'Tokens',
                 'requests.credits': 'Credits',
+                'requests.remaining': 'Remaining',
+                'requests.ip': 'IP',
                 'requests.status': 'Status',
                 'requests.success': 'Success',
                 'requests.failed': 'Failed'
@@ -2718,6 +2771,11 @@
         let filterStatus = (function () { try { return localStorage.getItem('filterStatus') || 'available'; } catch (e) { return 'available'; } })();
         let filterGroup = (function () { try { return localStorage.getItem('filterGroup') || 'all'; } catch (e) { return 'all'; } })();
         let sortField = (function () { try { return localStorage.getItem('sortField') || ''; } catch (e) { return ''; } })();
+
+        // 告警状态管理
+        let alertFlashTimer = null;
+        let originalTitle = 'Kiro-Go';
+        let alertCount = 0;
 
         // 隐私模式状态管理
         let privacyModeEnabled = false;
@@ -5323,6 +5381,9 @@
                     if (observeActive) loadObserve();
                     if (requestsActive) loadRequests();
                 });
+                observeSSE.addEventListener('alert_fired', (e) => {
+                    handleAlertFired(e.data);
+                });
                 observeSSE.onerror = () => {
                     // 5s 后重连
                     if (observeSSE) { observeSSE.close(); observeSSE = null; }
@@ -5330,6 +5391,65 @@
                 };
             } catch (e) { /* SSE not supported, fallback to polling */ }
         }
+
+        // 处理告警触发
+        function handleAlertFired(ruleId) {
+            alertCount++;
+            startAlertFlash();
+            showBrowserNotification(ruleId);
+            if (document.getElementById('tabAlerts')) {
+                loadAlertsHistory();
+            }
+        }
+
+        // tab 标题闪烁
+        function startAlertFlash() {
+            if (alertFlashTimer) return;
+            let flash = true;
+            alertFlashTimer = setInterval(() => {
+                document.title = flash ? `🚨 (${alertCount}) ${originalTitle}` : originalTitle;
+                flash = !flash;
+            }, 1000);
+        }
+
+        // 停止闪烁（用户切回 tab 时）
+        function stopAlertFlash() {
+            if (alertFlashTimer) {
+                clearInterval(alertFlashTimer);
+                alertFlashTimer = null;
+            }
+            document.title = originalTitle;
+            alertCount = 0;
+        }
+
+        // 浏览器通知
+        function showBrowserNotification(ruleId) {
+            if (!('Notification' in window)) return;
+            if (Notification.permission === 'granted') {
+                new Notification('Kiro-Go 告警', {
+                    body: `告警规则 ${ruleId} 已触发`,
+                    icon: '/favicon.ico',
+                    tag: 'kiro-alert'
+                });
+            } else if (Notification.permission !== 'denied') {
+                Notification.requestPermission().then(permission => {
+                    if (permission === 'granted') {
+                        new Notification('Kiro-Go 告警', {
+                            body: `告警规则 ${ruleId} 已触发`,
+                            icon: '/favicon.ico',
+                            tag: 'kiro-alert'
+                        });
+                    }
+                });
+            }
+        }
+
+        // 监听页面可见性变化
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) {
+                stopAlertFlash();
+            }
+        });
 
         // ==================== Backups ====================
         async function loadBackups() {
@@ -5478,7 +5598,7 @@
 
         // ========== Alerts ==========
         async function loadAlerts() {
-            const res = await fetch(`/admin/api/alerts?password=${encodeURIComponent(password)}`);
+            const res = await fetch('/admin/api/alerts', { headers: { 'X-Admin-Password': password } });
             const data = await res.json();
             const rules = data.rules || [];
             const html = rules.length === 0 ? `<div style="padding:12px;color:#64748b">${t('alerts.noRules')}</div>` :
@@ -5501,7 +5621,7 @@
         }
 
         async function loadAlertsHistory() {
-            const res = await fetch(`/admin/api/alerts/history?password=${encodeURIComponent(password)}&limit=50`);
+            const res = await fetch('/admin/api/alerts/history?limit=50', { headers: { 'X-Admin-Password': password } });
             const data = await res.json();
             const history = data.history || [];
             const html = history.length === 0 ? `<div style="padding:12px;color:#64748b">${t('alerts.noHistory')}</div>` :
@@ -5515,18 +5635,163 @@
             document.getElementById('alertsHistory').innerHTML = html;
         }
 
-        function openAlertModal(ruleId = null) {
-            alert('Alert rule editor not yet implemented');
+        async function openAlertModal(ruleId = null) {
+            const modal = document.getElementById('alertRuleModal');
+            const title = document.getElementById('alertRuleModalTitle');
+            const body = document.getElementById('alertRuleModalBody');
+
+            let rule = null;
+            if (ruleId) {
+                const res = await fetch(`/admin/api/alerts/${ruleId}`, { headers: { 'X-Admin-Password': password } });
+                const data = await res.json();
+                rule = data.rule;
+                title.textContent = t('alerts.edit');
+            } else {
+                title.textContent = t('alerts.create');
+            }
+
+            const conditionType = rule?.condition?.type || 'account_banned';
+            const target = rule?.condition?.target || 'global';
+            const actionType = rule?.actions?.[0]?.type || 'logsse';
+            const webhookUrl = rule?.actions?.[0]?.config?.url || '';
+
+            body.innerHTML = `
+                <div style="display:flex;flex-direction:column;gap:16px">
+                    <div>
+                        <label style="display:block;font-size:13px;font-weight:500;margin-bottom:6px" data-i18n="alerts.name"></label>
+                        <input type="text" id="alertRuleName" value="${rule?.name || ''}" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px" data-i18n-placeholder="alerts.namePlaceholder">
+                    </div>
+                    <div>
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                            <input type="checkbox" id="alertRuleEnabled" ${rule?.enabled !== false ? 'checked' : ''} style="width:16px;height:16px">
+                            <span style="font-size:13px;font-weight:500" data-i18n="alerts.enabled"></span>
+                        </label>
+                    </div>
+                    <div>
+                        <label style="display:block;font-size:13px;font-weight:500;margin-bottom:6px" data-i18n="alerts.conditionType"></label>
+                        <select id="alertConditionType" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px">
+                            <option value="account_banned" ${conditionType === 'account_banned' ? 'selected' : ''} data-i18n="alerts.accountBanned"></option>
+                            <option value="quota_exhausted" ${conditionType === 'quota_exhausted' ? 'selected' : ''} data-i18n="alerts.quotaExhausted"></option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="display:block;font-size:13px;font-weight:500;margin-bottom:6px" data-i18n="alerts.threshold"></label>
+                        <input type="number" id="alertThreshold" value="${rule?.condition?.threshold || 1}" step="0.01" min="0" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px">
+                        <div style="font-size:12px;color:#64748b;margin-top:4px">账号封禁：封禁账号数量；额度耗尽：使用率阈值（0-1）</div>
+                    </div>
+                    <div>
+                        <label style="display:block;font-size:13px;font-weight:500;margin-bottom:6px" data-i18n="alerts.window"></label>
+                        <input type="number" id="alertWindow" value="${rule?.condition?.window || 5}" min="1" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px">
+                    </div>
+                    <div>
+                        <label style="display:block;font-size:13px;font-weight:500;margin-bottom:6px" data-i18n="alerts.target"></label>
+                        <select id="alertTarget" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px" onchange="toggleAlertTargetInput()">
+                            <option value="global" ${target === 'global' ? 'selected' : ''} data-i18n="alerts.targetGlobal"></option>
+                            <option value="account" ${target !== 'global' && target !== '' ? 'selected' : ''} data-i18n="alerts.targetAccount"></option>
+                        </select>
+                        <input type="text" id="alertTargetValue" value="${target !== 'global' ? target : ''}" placeholder="account_id" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;margin-top:6px;display:${target !== 'global' ? 'block' : 'none'}">
+                    </div>
+                    <div>
+                        <label style="display:block;font-size:13px;font-weight:500;margin-bottom:6px" data-i18n="alerts.actions"></label>
+                        <select id="alertActionType" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px" onchange="toggleWebhookUrl()">
+                            <option value="logsse" ${actionType === 'logsse' ? 'selected' : ''} data-i18n="alerts.actionLogsse"></option>
+                            <option value="webhook" ${actionType === 'webhook' ? 'selected' : ''} data-i18n="alerts.actionWebhook"></option>
+                        </select>
+                        <div id="webhookUrlContainer" style="margin-top:6px;display:${actionType === 'webhook' ? 'block' : 'none'}">
+                            <input type="text" id="alertWebhookUrl" value="${webhookUrl}" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px" data-i18n-placeholder="alerts.webhookUrlPlaceholder">
+                        </div>
+                    </div>
+                    <div>
+                        <label style="display:block;font-size:13px;font-weight:500;margin-bottom:6px" data-i18n="alerts.cooldown"></label>
+                        <input type="number" id="alertCooldown" value="${rule?.cooldown || 300}" min="60" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px">
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" onclick="closeAlertRuleModal()" data-i18n="alerts.cancel"></button>
+                        <button class="btn btn-primary" onclick="submitAlertRule('${ruleId || ''}')" data-i18n="alerts.submit"></button>
+                    </div>
+                </div>
+            `;
+            applyTranslations();
+            modal.classList.add('active');
+        }
+
+        function closeAlertRuleModal() {
+            document.getElementById('alertRuleModal').classList.remove('active');
+        }
+
+        function toggleAlertTargetInput() {
+            const target = document.getElementById('alertTarget').value;
+            const input = document.getElementById('alertTargetValue');
+            input.style.display = target === 'global' ? 'none' : 'block';
+        }
+
+        function toggleWebhookUrl() {
+            const actionType = document.getElementById('alertActionType').value;
+            const container = document.getElementById('webhookUrlContainer');
+            container.style.display = actionType === 'webhook' ? 'block' : 'none';
+        }
+
+        async function submitAlertRule(ruleId) {
+            const name = document.getElementById('alertRuleName').value.trim();
+            if (!name) {
+                alert('Rule name is required');
+                return;
+            }
+
+            const enabled = document.getElementById('alertRuleEnabled').checked;
+            const conditionType = document.getElementById('alertConditionType').value;
+            const threshold = parseFloat(document.getElementById('alertThreshold').value);
+            const window = parseInt(document.getElementById('alertWindow').value);
+            const targetSelect = document.getElementById('alertTarget').value;
+            const targetValue = document.getElementById('alertTargetValue').value.trim();
+            const target = targetSelect === 'global' ? 'global' : targetValue;
+            const actionType = document.getElementById('alertActionType').value;
+            const webhookUrl = document.getElementById('alertWebhookUrl').value.trim();
+            const cooldown = parseInt(document.getElementById('alertCooldown').value);
+
+            const actions = [];
+            if (actionType === 'webhook') {
+                if (!webhookUrl) {
+                    alert('Webhook URL is required');
+                    return;
+                }
+                actions.push({ type: 'webhook', config: { url: webhookUrl } });
+            } else {
+                actions.push({ type: 'logsse', config: {} });
+            }
+
+            const rule = {
+                name,
+                enabled,
+                condition: { type: conditionType, threshold, window, target },
+                actions,
+                cooldown
+            };
+
+            try {
+                const url = ruleId ? `/admin/api/alerts/${ruleId}` : '/admin/api/alerts';
+                const method = ruleId ? 'PUT' : 'POST';
+                const res = await fetch(url, {
+                    method,
+                    headers: { 'Content-Type': 'application/json', 'X-Admin-Password': password },
+                    body: JSON.stringify(rule)
+                });
+                if (!res.ok) throw new Error('Failed to save rule');
+                closeAlertRuleModal();
+                loadAlerts();
+            } catch (e) {
+                alert('Failed to save rule: ' + e.message);
+            }
         }
 
         async function toggleAlert(id, enabled) {
-            const res = await fetch(`/admin/api/alerts/${id}?password=${encodeURIComponent(password)}`);
+            const res = await fetch(`/admin/api/alerts/${id}`, { headers: { 'X-Admin-Password': password } });
             const data = await res.json();
             const rule = data.rule;
             rule.enabled = enabled;
-            await fetch(`/admin/api/alerts/${id}?password=${encodeURIComponent(password)}`, {
+            await fetch(`/admin/api/alerts/${id}`, {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', 'X-Admin-Password': password },
                 body: JSON.stringify(rule)
             });
             loadAlerts();
@@ -5534,12 +5799,12 @@
 
         async function deleteAlert(id) {
             if (!confirm(t('alerts.confirmDelete'))) return;
-            await fetch(`/admin/api/alerts/${id}?password=${encodeURIComponent(password)}`, { method: 'DELETE' });
+            await fetch(`/admin/api/alerts/${id}`, { method: 'DELETE', headers: { 'X-Admin-Password': password } });
             loadAlerts();
         }
 
         async function testAlert(id) {
-            const res = await fetch(`/admin/api/alerts/${id}/test?password=${encodeURIComponent(password)}`, { method: 'POST' });
+            const res = await fetch(`/admin/api/alerts/${id}/test`, { method: 'POST', headers: { 'X-Admin-Password': password } });
             const data = await res.json();
             alert(`Triggered: ${data.triggered}\nValue: ${data.value.toFixed(2)}\nThreshold: ${data.threshold}`);
         }
@@ -5565,6 +5830,8 @@
                         <th style="padding:8px;font-weight:600">${t('requests.model')}</th>
                         <th style="padding:8px;font-weight:600">${t('requests.tokens')}</th>
                         <th style="padding:8px;font-weight:600">${t('requests.credits')}</th>
+                        <th style="padding:8px;font-weight:600">${t('requests.remaining')}</th>
+                        <th style="padding:8px;font-weight:600">${t('requests.ip')}</th>
                         <th style="padding:8px;font-weight:600">${t('requests.status')}</th>
                     </tr></thead>
                     <tbody>${reqs.map(r => `
@@ -5574,6 +5841,8 @@
                             <td style="padding:8px;font-size:12px">${escapeHtml(r.model)}</td>
                             <td style="padding:8px;font-size:12px">${r.inTokens + r.outTokens} (${r.inTokens}/${r.outTokens})</td>
                             <td style="padding:8px;font-size:12px">${r.credits.toFixed(2)}</td>
+                            <td style="padding:8px;font-size:12px">${(r.remainingCredits || 0).toFixed(2)}</td>
+                            <td style="padding:8px;font-size:11px;color:#64748b">${escapeHtml(r.ip || '-')}</td>
                             <td style="padding:8px"><span style="padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;${r.success ? 'background:#dcfce7;color:#166534' : 'background:#fee2e2;color:#991b1b'}">${r.success ? t('requests.success') : t('requests.failed')}</span></td>
                         </tr>
                     `).join('')}</tbody>

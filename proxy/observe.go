@@ -29,6 +29,7 @@ type minuteBucket struct {
 // modelStat 模型级聚合（生命周期内累计）
 type modelStat struct {
 	Reqs      int64
+	Failures  int64
 	InTokens  int64
 	OutTokens int64
 	Credits   float64
@@ -47,15 +48,17 @@ type errorRecord struct {
 
 // requestRecord 请求记录条目
 type requestRecord struct {
-	TS         int64   `json:"ts"`
-	AccountID  string  `json:"accountId"`
-	Email      string  `json:"email,omitempty"`
-	Model      string  `json:"model"`
-	InTokens   int     `json:"inTokens"`
-	OutTokens  int     `json:"outTokens"`
-	TotalTokens int    `json:"totalTokens"`
-	Credits    float64 `json:"credits"`
-	Success    bool    `json:"success"`
+	TS               int64   `json:"ts"`
+	AccountID        string  `json:"accountId"`
+	Email            string  `json:"email,omitempty"`
+	Model            string  `json:"model"`
+	InTokens         int     `json:"inTokens"`
+	OutTokens        int     `json:"outTokens"`
+	TotalTokens      int     `json:"totalTokens"`
+	Credits          float64 `json:"credits"`          // 使用额度
+	RemainingCredits float64 `json:"remainingCredits"` // 剩余额度
+	Success          bool    `json:"success"`
+	IP               string  `json:"ip,omitempty"` // 请求来源 IP
 }
 
 // observeStore 全局只读单例，写入加锁。
@@ -206,6 +209,7 @@ func (s *observeStore) RecordFailure(accountID, model string) {
 			s.modelStats[model] = ms
 		}
 		ms.Reqs++
+		ms.Failures++
 		ms.LastUsed = now
 	}
 }
@@ -233,20 +237,22 @@ func (s *observeStore) RecordError(accountID, email, model string, status int, m
 }
 
 // RecordRequest 记录一次请求（成功或失败）
-func (s *observeStore) RecordRequest(accountID, email, model string, inTokens, outTokens int, credits float64, success bool) {
+func (s *observeStore) RecordRequest(accountID, email, model string, inTokens, outTokens int, credits, remainingCredits float64, success bool, ip string) {
 	if s == nil {
 		return
 	}
 	rec := requestRecord{
-		TS:          time.Now().Unix(),
-		AccountID:   accountID,
-		Email:       email,
-		Model:       model,
-		InTokens:    inTokens,
-		OutTokens:   outTokens,
-		TotalTokens: inTokens + outTokens,
-		Credits:     credits,
-		Success:     success,
+		TS:               time.Now().Unix(),
+		AccountID:        accountID,
+		Email:            email,
+		Model:            model,
+		InTokens:         inTokens,
+		OutTokens:        outTokens,
+		TotalTokens:      inTokens + outTokens,
+		Credits:          credits,
+		RemainingCredits: remainingCredits,
+		Success:          success,
+		IP:               ip,
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
