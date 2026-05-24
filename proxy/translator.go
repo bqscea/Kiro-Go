@@ -49,6 +49,12 @@ const ThinkingModePrompt = `<thinking_mode>enabled</thinking_mode>
 const minimalFallbackUserContent = "."
 const toolResultsContinuationPrefix = "Tool results:"
 
+// 预编译正则（热路径优化）
+var (
+	imagePlaceholderRe = regexp.MustCompile(`\[Image\s+\d+\]`)
+	dataURLRe          = regexp.MustCompile(`^data:image/([a-zA-Z0-9+.-]+)(;[a-zA-Z0-9=._:+-]+)*;base64,(.+)$`)
+)
+
 // ParseModelAndThinking 解析模型名称，返回实际模型和是否启用 thinking
 func ParseModelAndThinking(model string, thinkingSuffix string) (string, bool) {
 	lower := strings.ToLower(model)
@@ -1366,8 +1372,7 @@ func extractImageFromOpenAIPart(part map[string]interface{}) *KiroImage {
 }
 
 func sanitizeImagePlaceholders(text string) string {
-	re := regexp.MustCompile(`\[Image\s+\d+\]`)
-	cleaned := re.ReplaceAllString(text, "")
+	cleaned := imagePlaceholderRe.ReplaceAllString(text, "")
 	cleaned = strings.Join(strings.Fields(cleaned), " ")
 	return strings.TrimSpace(cleaned)
 }
@@ -1385,8 +1390,7 @@ func parseDataURL(url string) *KiroImage {
 	if strings.Contains(cleaned, "[Image") {
 		return nil
 	}
-	re := regexp.MustCompile(`^data:image/([a-zA-Z0-9+.-]+)(;[a-zA-Z0-9=._:+-]+)*;base64,(.+)$`)
-	matches := re.FindStringSubmatch(cleaned)
+	matches := dataURLRe.FindStringSubmatch(cleaned)
 	if len(matches) == 4 {
 		return parseBase64Image(matches[3], matches[1])
 	}
