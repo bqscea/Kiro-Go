@@ -533,8 +533,8 @@
 
         .account-stats {
             display: grid;
-            grid-template-columns: repeat(5, 1fr);
-            gap: 6px;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 4px;
             margin-top: 10px;
             padding-top: 10px;
             border-top: 1px solid #e2e8f0;
@@ -845,6 +845,294 @@
                 font-size: 14px;
             }
         }
+
+        /* 筛选栏样式 */
+        .filter-toolbar {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            padding: 12px 20px;
+            flex-wrap: wrap;
+        }
+
+        .filter-section {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            flex-shrink: 0;
+        }
+
+        .filter-section.auto-margin {
+            margin-left: auto;
+        }
+
+        .filter-input {
+            width: 200px;
+            height: 34px;
+            padding: 0 12px;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            font-size: 14px;
+            outline: none;
+            transition: all 0.2s;
+            box-sizing: border-box;
+        }
+
+        .filter-input:focus {
+            border-color: #7c3aed;
+            box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1);
+        }
+
+        .filter-select {
+            height: 34px;
+            padding: 0 10px;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            font-size: 13px;
+            background: #fff;
+            cursor: pointer;
+            outline: none;
+            transition: all 0.2s;
+            min-width: 100px;
+            box-sizing: border-box;
+        }
+
+        .filter-select:hover {
+            border-color: #cbd5e1;
+        }
+
+        .filter-select:focus {
+            border-color: #7c3aed;
+            box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1);
+        }
+
+        .filter-divider {
+            height: 20px;
+            width: 1px;
+            background: #cbd5e1;
+            flex-shrink: 0;
+        }
+
+        .filter-clear-btn {
+            height: 34px;
+            padding: 0 12px;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            font-size: 13px;
+            background: #fff;
+            color: #64748b;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+            box-sizing: border-box;
+            display: inline-flex;
+            align-items: center;
+        }
+
+        .filter-clear-btn:hover {
+            background: #f8fafc;
+            border-color: #cbd5e1;
+            color: #374151;
+        }
+
+        .batch-toolbar {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            padding: 8px 20px;
+            background: linear-gradient(to right, #faf5ff, #f5f3ff);
+            border-top: 1px solid #e9d5ff;
+            border-bottom: 1px solid #e9d5ff;
+            flex-wrap: wrap;
+        }
+
+        .batch-group {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+
+        .filter-clear-btn:active {
+            background: #f1f5f9;
+        }
+
+        .status-tabs {
+            display: flex;
+            gap: 4px;
+            padding: 12px 20px 0;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .status-tab {
+            padding: 8px 16px;
+            font-size: 13px;
+            font-weight: 500;
+            color: #64748b;
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid transparent;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .status-tab:hover {
+            color: #374151;
+            background: #f8fafc;
+        }
+
+        .status-tab.active {
+            color: #7c3aed;
+            border-bottom-color: #7c3aed;
+        }
+
+        @media (max-width: 768px) {
+            .filter-toolbar {
+                padding: 0 16px 12px;
+            }
+
+            .filter-input {
+                width: 100%;
+                min-width: 0;
+            }
+
+            .filter-section.auto-margin {
+                margin-left: 0;
+                width: 100%;
+            }
+
+            .filter-select {
+                flex: 1;
+                min-width: 0;
+            }
+        }
+
+        /* 自定义弹窗系统 */
+        .dialog-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 9999;
+            animation: fadeIn 0.2s ease;
+        }
+
+        .dialog-overlay.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .dialog-box {
+            background: #fff;
+            border-radius: 16px;
+            padding: 24px;
+            width: 100%;
+            max-width: 420px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            animation: slideUp 0.3s ease;
+        }
+
+        .dialog-icon {
+            width: 48px;
+            height: 48px;
+            margin: 0 auto 16px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+        }
+
+        .dialog-icon.success {
+            background: #dcfce7;
+            color: #16a34a;
+        }
+
+        .dialog-icon.error {
+            background: #fee2e2;
+            color: #dc2626;
+        }
+
+        .dialog-icon.warning {
+            background: #fef3c7;
+            color: #d97706;
+        }
+
+        .dialog-icon.info {
+            background: #ede9fe;
+            color: #7c3aed;
+        }
+
+        .dialog-icon.confirm {
+            background: #dbeafe;
+            color: #3b82f6;
+        }
+
+        .dialog-message {
+            text-align: center;
+            color: #1e293b;
+            font-size: 15px;
+            line-height: 1.6;
+            margin-bottom: 20px;
+            white-space: pre-wrap;
+        }
+
+        .dialog-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        .dialog-btn {
+            padding: 10px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            min-width: 80px;
+        }
+
+        .dialog-btn-primary {
+            background: #7c3aed;
+            color: white;
+        }
+
+        .dialog-btn-primary:hover {
+            background: #6d28d9;
+        }
+
+        .dialog-btn-secondary {
+            background: #f1f5f9;
+            color: #374151;
+        }
+
+        .dialog-btn-secondary:hover {
+            background: #e2e8f0;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
     </style>
 </head>
 
@@ -946,39 +1234,33 @@
                             </label>
                         </div>
                         <button class="btn btn-secondary btn-sm" onclick="showExportModal()" data-i18n="accounts.export"></button>
+                        <button class="btn btn-secondary btn-sm" onclick="showImportModal()" data-i18n="accounts.import"></button>
                         <button class="btn btn-secondary btn-sm" onclick="refreshAllModels()" data-i18n="models.refreshAll"></button>
                         <button class="btn btn-primary btn-sm" onclick="showModal('add')" data-i18n="accounts.add"></button>
                     </div>
                 </div>
-                <div id="accountsToolbar" style="display:flex;gap:8px;align-items:center;padding:0 20px 12px">
-                    <label style="display:flex;align-items:center;gap:4px;cursor:pointer;user-select:none;flex-shrink:0"><input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll(this.checked)" style="width:15px;height:15px;cursor:pointer"> <span style="font-size:13px;color:#374151" data-i18n="batch.selectAll"></span></label>
-                    <div style="height:16px;width:1px;background:#e2e8f0;flex-shrink:0"></div>
-                    <div id="batchBar" style="display:none;align-items:center;gap:6px;flex-shrink:0">
-                        <span id="batchCount" style="font-size:12px;color:#7c3aed;font-weight:600;white-space:nowrap"></span>
-                        <button class="btn btn-sm btn-primary" onclick="batchAction('enable')" style="padding:3px 10px;font-size:12px" data-i18n="batch.enable"></button>
-                        <button class="btn btn-sm btn-secondary" onclick="batchAction('disable')" style="padding:3px 10px;font-size:12px" data-i18n="batch.disable"></button>
-                        <button class="btn btn-sm btn-secondary" onclick="batchAction('refresh')" style="padding:3px 10px;font-size:12px" data-i18n="batch.refresh"></button>
-                        <button class="btn btn-sm btn-secondary" onclick="batchRefreshModels()" style="padding:3px 10px;font-size:12px" data-i18n="batch.refreshModels"></button>
-                        <button class="btn btn-sm btn-secondary" onclick="batchSetGroup()" style="padding:3px 10px;font-size:12px;background:#0ea5e9;color:#fff" data-i18n="batch.setGroup"></button>
-                        <button class="btn btn-sm btn-secondary" onclick="batchClearGroup()" style="padding:3px 10px;font-size:12px" data-i18n="batch.clearGroup"></button>
-                        <button class="btn btn-sm btn-secondary" onclick="batchSilent()" style="padding:3px 10px;font-size:12px;background:#64748b;color:#fff" data-i18n="batch.silent"></button>
-                        <button class="btn btn-sm btn-secondary" onclick="batchRemoveSilent()" style="padding:3px 10px;font-size:12px" data-i18n="batch.removeSilent"></button>
-                        <div style="height:16px;width:1px;background:#e2e8f0;flex-shrink:0"></div>
+                <div class="status-tabs">
+                    <button class="status-tab" data-status="all" onclick="switchStatusTab('all')" data-i18n="filter.all"></button>
+                    <button class="status-tab active" data-status="available" onclick="switchStatusTab('available')" data-i18n="filter.available"></button>
+                    <button class="status-tab" data-status="enabled" onclick="switchStatusTab('enabled')" data-i18n="filter.enabled"></button>
+                    <button class="status-tab" data-status="disabled" onclick="switchStatusTab('disabled')" data-i18n="filter.disabled"></button>
+                    <button class="status-tab" data-status="banned" onclick="switchStatusTab('banned')" data-i18n="filter.banned"></button>
+                    <button class="status-tab" data-status="exhausted" onclick="switchStatusTab('exhausted')" data-i18n="filter.exhausted"></button>
+                </div>
+                <div class="filter-toolbar">
+                    <div class="filter-section">
+                        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;height:34px">
+                            <input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll(this.checked)" style="width:16px;height:16px;cursor:pointer;flex-shrink:0">
+                            <span style="font-size:13px;color:#374151" data-i18n="batch.selectAll"></span>
+                        </label>
                     </div>
-                    <div style="display:flex;gap:6px;align-items:center;margin-left:auto;flex-shrink:0">
-                        <input type="text" id="filterSearch" oninput="onFilterChange()" style="width:260px;padding:8px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:14px;outline:none" data-i18n-placeholder="filter.search">
-                        <select id="filterStatusSelect" onchange="onFilterChange()" style="padding:4px 6px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;background:#fff;cursor:pointer">
-                            <option value="all" data-i18n="filter.all"></option>
-                            <option value="enabled" data-i18n="filter.enabled"></option>
-                            <option value="disabled" data-i18n="filter.disabled"></option>
-                            <option value="silent" data-i18n="filter.silent"></option>
-                            <option value="banned" data-i18n="filter.banned"></option>
-                            <option value="exhausted" data-i18n="filter.exhausted"></option>
-                        </select>
-                        <select id="filterGroupSelect" onchange="onFilterChange()" style="padding:4px 6px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;background:#fff;cursor:pointer">
+                    <div class="filter-divider"></div>
+                    <div class="filter-section">
+                        <input type="text" id="filterSearch" oninput="onFilterChange()" class="filter-input" data-i18n-placeholder="filter.search">
+                        <select id="filterGroupSelect" onchange="onFilterChange()" class="filter-select">
                             <option value="all" data-i18n="filter.allGroups"></option>
                         </select>
-                        <select id="sortSelect" onchange="onSortChange()" style="padding:4px 6px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;background:#fff;cursor:pointer">
+                        <select id="sortSelect" onchange="onSortChange()" class="filter-select">
                             <option value="" data-i18n="sort.default"></option>
                             <option value="-requestCount" data-i18n="sort.requestCountDesc"></option>
                             <option value="requestCount" data-i18n="sort.requestCountAsc"></option>
@@ -988,9 +1270,30 @@
                             <option value="-lastUsed" data-i18n="sort.lastUsedDesc"></option>
                             <option value="email" data-i18n="sort.emailAsc"></option>
                         </select>
+                        <button class="filter-clear-btn" onclick="clearFilters()" data-i18n="filter.clear"></button>
                     </div>
                 </div>
-                <div id="groupBoard" style="padding:0 20px 12px;display:none"></div>
+                <div id="batchBar" class="batch-toolbar" style="display:none">
+                    <span id="batchCount" style="font-size:13px;color:#7c3aed;font-weight:600"></span>
+                    <div class="batch-group">
+                        <button class="btn btn-sm btn-primary" onclick="batchAction('enable')" data-i18n="batch.enable"></button>
+                        <button class="btn btn-sm btn-secondary" onclick="batchAction('disable')" data-i18n="batch.disable"></button>
+                    </div>
+                    <div class="filter-divider"></div>
+                    <div class="batch-group">
+                        <button class="btn btn-sm btn-secondary" onclick="batchAction('refresh')" data-i18n="batch.refresh"></button>
+                        <button class="btn btn-sm btn-secondary" onclick="batchRefreshModels()" data-i18n="batch.refreshModels"></button>
+                    </div>
+                    <div class="filter-divider"></div>
+                    <div class="batch-group">
+                        <button class="btn btn-sm btn-secondary" onclick="batchSetGroup()" style="background:#0ea5e9;color:#fff" data-i18n="batch.setGroup"></button>
+                        <button class="btn btn-sm btn-secondary" onclick="batchClearGroup()" data-i18n="batch.clearGroup"></button>
+                    </div>
+                    <div class="filter-divider"></div>
+                    <div class="batch-group">
+                        <button class="btn btn-sm btn-secondary" onclick="batchDelete()" style="background:#dc2626;color:#fff" data-i18n="batch.delete"></button>
+                    </div>
+                </div>
                 <div id="accountsList"></div>
             </div>
         </div>
@@ -1296,6 +1599,13 @@
             <div id="exportBody"></div>
         </div>
     </div>
+    <div id="importModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header"><span class="modal-title" data-i18n="import.title"></span><button
+                    class="modal-close" onclick="closeImportModal()">&times;</button></div>
+            <div id="importBody"></div>
+        </div>
+    </div>
     <div id="updateModal" class="modal">
         <div class="modal-content">
             <div class="modal-header"><span class="modal-title" data-i18n="update.title"></span><button
@@ -1343,6 +1653,7 @@
                 'tabs.requests': '请求记录',
                 'accounts.title': '账号列表',
                 'accounts.add': '添加账号',
+                'accounts.import': '导入凭证',
                 'accounts.empty': '暂无账号',
                 'accounts.refresh': '刷新',
                 'accounts.detail': '详情',
@@ -1353,10 +1664,10 @@
                 'accounts.tokens': 'Tokens',
                 'accounts.credits': 'Credits',
                 'accounts.expiry': '到期',
+                'accounts.lastUsed': '最后调用',
                 'accounts.noToken': '无Token',
                 'accounts.expired': '已过期',
                 'accounts.disabled': '已禁用',
-                'accounts.silent': '静默',
                 'accounts.normal': '正常',
                 'accounts.enabled': '已启用',
                 'accounts.banned': '已封禁',
@@ -1377,6 +1688,12 @@
                 'time.minutes': '分钟',
                 'time.hours': '小时',
                 'time.days': '天',
+                'time.never': '从未',
+                'time.justNow': '刚刚',
+                'time.minutesAgo': '分钟前',
+                'time.hoursAgo': '小时前',
+                'time.daysAgo': '天前',
+                'time.monthsAgo': '月前',
                 'settings.apiSettings': 'API 设置',
                 'settings.enableApiKey': '启用 API Key 验证',
                 'settings.apiKeyPlaceholder': '留空则不验证',
@@ -1399,9 +1716,6 @@
                 'settings.apiKeyMaxTokens': '单请求 Token 上限',
                 'settings.apiKeyUsage': '已用',
                 'settings.apiKeyUsageTip': '本分钟 / 本日 已用次数 · 累计请求 / Token / Credits',
-                'groupBoard.tip': '点击筛选此分组',
-                'groupBoard.line': '可用 {0}/{1} · 冷却 {2} · 禁用 {3}',
-                'groupBoard.editPolicy': '编辑白名单',
                 'settings.groupPolicy': '分组绑定模型',
                 'settings.groupPolicyHint': '为分组绑定可用模型白名单 / 黑名单。例：pro 可用 claude-opus-4-7，free 仅 claude-sonnet-4.5。多个模型用英文逗号分隔，留空 = 不限制。黑名单优先生效。',
                 'settings.addGroupPolicy': '+ 新增分组策略',
@@ -1478,10 +1792,6 @@
                 'detail.title': '账号详情',
                 'detail.basicInfo': '基本信息',
                 'detail.status': '状态',
-                'detail.silentReason': '静默原因',
-                'detail.silentTime': '静默时间',
-                'detail.setSilent': '加入静默',
-                'detail.removeSilent': '移除静默',
                 'detail.email': '邮箱',
                 'detail.userId': '用户ID',
                 'detail.authMethod': '认证方式',
@@ -1602,6 +1912,21 @@
                 'export.copyJson': '复制 JSON',
                 'export.copied': '已复制到剪贴板',
                 'export.noSelection': '请至少选择一个账号',
+                'import.title': '批量导入凭证',
+                'import.jsonLabel': '凭证 JSON',
+                'import.jsonPlaceholder': '粘贴 JSON 数组或 Kiro Account Manager 导出格式',
+                'import.start': '开始导入',
+                'import.importing': '导入中...',
+                'import.progress': '进度',
+                'import.current': '当前',
+                'import.success': '成功',
+                'import.warning': '警告',
+                'import.failed': '失败',
+                'import.skipped': '跳过',
+                'import.completed': '导入完成',
+                'import.processing': '正在处理',
+                'import.emptyJson': '请输入 JSON 内容',
+                'import.confirmClose': '导入进行中，确定关闭？',
                 'update.title': '版本更新',
                 'update.current': '当前版本',
                 'update.latest': '最新版本',
@@ -1630,20 +1955,18 @@
                 'batch.refreshResult': '刷新完成：成功 {0}，失败 {1}',
                 'batch.confirmRefreshModels': '确定为已选 {0} 个账号刷新模型缓存？',
                 'batch.refreshModelsResult': '模型缓存刷新完成：成功 {0}，失败 {1}',
-                'batch.silent': '加入静默',
-                'batch.removeSilent': '移除静默',
-                'batch.confirmSilent': '确认将 {0} 个账号加入静默（禁用但不刷新列表）？',
-                'batch.confirmRemoveSilent': '确认将 {0} 个账号移除静默（启用账号）？',
-                'batch.silentResult': '已将 {0} 个账号加入静默',
-                'batch.removeSilentResult': '已将 {0} 个账号移除静默',
+                'batch.delete': '批量删除',
+                'batch.confirmDelete': '确定删除 {0} 个账号？此操作不可恢复！',
+                'batch.deleteResult': '删除完成：成功 {0}，失败 {1}',
                 'batch.done': '操作完成',
                 'filter.search': '搜索邮箱/昵称...',
                 'filter.all': '全部',
+                'filter.available': '可用',
                 'filter.enabled': '已启用',
                 'filter.disabled': '已禁用',
-                'filter.silent': '静默',
                 'filter.banned': '已封禁',
                 'filter.exhausted': '额度耗尽',
+                'filter.clear': '清空筛选',
                 'accounts.weight': '权重',
                 'detail.weight': '请求权重',
                 'detail.weightHint': '0-1=普通, 2+=高优先级',
@@ -1805,6 +2128,7 @@
                 'tabs.requests': 'Requests',
                 'accounts.title': 'Account List',
                 'accounts.add': 'Add Account',
+                'accounts.import': 'Import Credentials',
                 'accounts.empty': 'No accounts',
                 'accounts.refresh': 'Refresh',
                 'accounts.detail': 'Details',
@@ -1815,10 +2139,10 @@
                 'accounts.tokens': 'Tokens',
                 'accounts.credits': 'Credits',
                 'accounts.expiry': 'Expiry',
+                'accounts.lastUsed': 'Last used',
                 'accounts.noToken': 'No Token',
                 'accounts.expired': 'Expired',
                 'accounts.disabled': 'Disabled',
-                'accounts.silent': 'Silent',
                 'accounts.normal': 'Active',
                 'accounts.enabled': 'Enabled',
                 'accounts.banned': 'Banned',
@@ -1833,6 +2157,12 @@
                 'time.minutes': 'min',
                 'time.hours': 'hr',
                 'time.days': 'd',
+                'time.never': 'Never',
+                'time.justNow': 'Just now',
+                'time.minutesAgo': 'min ago',
+                'time.hoursAgo': 'h ago',
+                'time.daysAgo': 'd ago',
+                'time.monthsAgo': 'mo ago',
                 'settings.apiSettings': 'API Settings',
                 'settings.enableApiKey': 'Enable API Key Verification',
                 'settings.apiKeyPlaceholder': 'Leave empty to disable',
@@ -1855,8 +2185,6 @@
                 'settings.apiKeyMaxTokens': 'Max tokens / req',
                 'settings.apiKeyUsage': 'Used',
                 'settings.apiKeyUsageTip': 'This minute / today · cumulative req / tokens / credits',
-                'groupBoard.tip': 'Click to filter this group',
-                'groupBoard.line': 'avail {0}/{1} · cooldown {2} · disabled {3}',
                 'groupBoard.editPolicy': 'Edit Whitelist',
                 'settings.groupPolicy': 'Group → Model Whitelist',
                 'settings.groupPolicyHint': 'Bind a group to allowed/denied models. e.g. pro → claude-opus-4-7, free → claude-sonnet-4.5. Comma separated; empty = unrestricted; deny list takes precedence.',
@@ -1934,10 +2262,6 @@
                 'detail.title': 'Account Details',
                 'detail.basicInfo': 'Basic Info',
                 'detail.status': 'Status',
-                'detail.silentReason': 'Silent Reason',
-                'detail.silentTime': 'Silent Time',
-                'detail.setSilent': 'Add Silent',
-                'detail.removeSilent': 'Remove Silent',
                 'detail.email': 'Email',
                 'detail.userId': 'User ID',
                 'detail.authMethod': 'Auth Method',
@@ -2054,6 +2378,21 @@
                 'export.copyJson': 'Copy JSON',
                 'export.copied': 'Copied to clipboard',
                 'export.noSelection': 'Please select at least one account',
+                'import.title': 'Batch Import Credentials',
+                'import.jsonLabel': 'Credentials JSON',
+                'import.jsonPlaceholder': 'Paste JSON array or Kiro Account Manager export format',
+                'import.start': 'Start Import',
+                'import.importing': 'Importing...',
+                'import.progress': 'Progress',
+                'import.current': 'Current',
+                'import.success': 'Success',
+                'import.warning': 'Warning',
+                'import.failed': 'Failed',
+                'import.skipped': 'Skipped',
+                'import.completed': 'Import Completed',
+                'import.processing': 'Processing',
+                'import.emptyJson': 'Please enter JSON content',
+                'import.confirmClose': 'Import in progress, confirm close?',
                 'update.title': 'Version Update',
                 'update.current': 'Current',
                 'update.latest': 'Latest',
@@ -2082,20 +2421,18 @@
                 'batch.refreshResult': 'Refresh done: {0} success, {1} failed',
                 'batch.confirmRefreshModels': 'Refresh model cache for {0} selected accounts?',
                 'batch.refreshModelsResult': 'Model cache refresh done: {0} success, {1} failed',
-                'batch.silent': 'Add Silent',
-                'batch.removeSilent': 'Remove Silent',
-                'batch.confirmSilent': 'Add {0} accounts to silent mode (disable without refresh)?',
-                'batch.confirmRemoveSilent': 'Remove {0} accounts from silent mode (enable accounts)?',
-                'batch.silentResult': 'Added {0} accounts to silent mode',
-                'batch.removeSilentResult': 'Removed {0} accounts from silent mode',
+                'batch.delete': 'Batch Delete',
+                'batch.confirmDelete': 'Delete {0} accounts? This action cannot be undone!',
+                'batch.deleteResult': 'Delete done: {0} success, {1} failed',
                 'batch.done': 'Done',
                 'filter.search': 'Search email/nickname...',
                 'filter.all': 'All',
+                'filter.available': 'Available',
                 'filter.enabled': 'Enabled',
                 'filter.disabled': 'Disabled',
-                'filter.silent': 'Silent',
                 'filter.banned': 'Banned',
                 'filter.exhausted': 'Quota Exhausted',
+                'filter.clear': 'Clear Filters',
                 'accounts.weight': 'Weight',
                 'detail.weight': 'Request Weight',
                 'detail.weightHint': '0-1=normal, 2+=higher priority',
@@ -2267,7 +2604,7 @@
         let accountsData = [];
         let selectedAccounts = new Set();
         let filterKeyword = (function () { try { return localStorage.getItem('filterKeyword') || ''; } catch (e) { return ''; } })();
-        let filterStatus = (function () { try { return localStorage.getItem('filterStatus') || 'all'; } catch (e) { return 'all'; } })();
+        let filterStatus = (function () { try { return localStorage.getItem('filterStatus') || 'available'; } catch (e) { return 'available'; } })();
         let filterGroup = (function () { try { return localStorage.getItem('filterGroup') || 'all'; } catch (e) { return 'all'; } })();
         let sortField = (function () { try { return localStorage.getItem('sortField') || ''; } catch (e) { return ''; } })();
 
@@ -2384,12 +2721,17 @@
         function showMain() {
             document.getElementById('loginPage').classList.add('hidden');
             document.getElementById('mainPage').classList.remove('hidden');
+            // 恢复上次选中的 tab
+            try {
+                const lastTab = localStorage.getItem('currentTab') || 'accounts';
+                switchTab(lastTab);
+            } catch (e) { }
             // 回填筛选状态到 DOM，避免刷新后下拉框与内存状态不一致
             try {
                 const searchEl = document.getElementById('filterSearch');
                 if (searchEl) searchEl.value = filterKeyword || '';
-                const statusEl = document.getElementById('filterStatusSelect');
-                if (statusEl) statusEl.value = filterStatus || 'all';
+                // 初始化 tab 状态
+                switchStatusTab(filterStatus || 'all');
                 const sortEl = document.getElementById('sortSelect');
                 if (sortEl) sortEl.value = sortField || '';
             } catch (e) { }
@@ -2415,40 +2757,6 @@
             document.getElementById('statBanned').textContent = d.totalBanned || 0;
             document.getElementById('statTodayBanned').textContent = d.todayBanned || 0;
             document.getElementById('statExhausted').textContent = d.totalExhausted || 0;
-            renderGroupBoard(d.groupBreakdown || []);
-        }
-        function renderGroupBoard(groups) {
-            const board = document.getElementById('groupBoard');
-            if (!board) return;
-            if (!groups || groups.length === 0) {
-                board.style.display = 'none';
-                board.innerHTML = '';
-                return;
-            }
-            board.style.display = 'flex';
-            board.style.flexWrap = 'wrap';
-            board.style.gap = '8px';
-            board.innerHTML = groups.map(g => {
-                const pct = g.total > 0 ? Math.round(g.available * 100 / g.total) : 0;
-                const color = g.available === 0 ? '#ef4444' : (pct < 50 ? '#f59e0b' : '#10b981');
-                return '<div onclick="quickFilterGroup(\'' + escapeAttr(g.group) + '\')" style="cursor:pointer;border:1px solid #e2e8f0;border-radius:8px;padding:6px 10px;background:#fff;min-width:130px;display:flex;flex-direction:column;gap:2px" title="' + t('groupBoard.tip') + '">' +
-                    '<div style="display:flex;justify-content:space-between;align-items:center;gap:6px">' +
-                    '<div style="font-weight:600;font-size:13px;color:#0f172a">' + g.group + '</div>' +
-                    '<button onclick="event.stopPropagation();editGroupPolicy(\'' + escapeAttr(g.group) + '\')" class="btn btn-sm btn-secondary" style="padding:1px 6px;font-size:10px;border-radius:4px" title="' + t('groupBoard.editPolicy') + '">⚙</button>' +
-                    '</div>' +
-                    '<div style="font-size:11px;color:#64748b">' + t('groupBoard.line', g.available, g.total, g.cooldown || 0, g.disabled || 0) + '</div>' +
-                    '<div style="height:3px;background:#f1f5f9;border-radius:2px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:' + color + '"></div></div>' +
-                    '</div>';
-            }).join('');
-        }
-        function quickFilterGroup(group) {
-            const sel = document.getElementById('filterGroupSelect');
-            if (!sel) return;
-            const target = group === 'default' ? '__default__' : group;
-            for (const opt of sel.options) {
-                if (opt.value === target) { sel.value = target; break; }
-            }
-            onFilterChange();
         }
         async function loadAccounts() {
             const res = await fetch('/admin/api/accounts', { headers: { 'X-Admin-Password': password } });
@@ -2474,9 +2782,14 @@
         }
         function getFilteredAccounts() {
             return accountsData.filter(a => {
-                if (filterStatus === 'enabled' && (!a.enabled || a.silent)) return false;
-                if (filterStatus === 'disabled' && (a.enabled || a.silent || (a.banStatus && a.banStatus !== 'ACTIVE'))) return false;
-                if (filterStatus === 'silent' && !a.silent) return false;
+                if (filterStatus === 'available') {
+                    const isEnabled = a.enabled;
+                    const notBanned = !a.banStatus || a.banStatus === 'ACTIVE';
+                    const notExhausted = a.usageLimit === 0 || a.usageCurrent < a.usageLimit;
+                    if (!(isEnabled && notBanned && notExhausted)) return false;
+                }
+                if (filterStatus === 'enabled' && !a.enabled) return false;
+                if (filterStatus === 'disabled' && (a.enabled || (a.banStatus && a.banStatus !== 'ACTIVE'))) return false;
                 if (filterStatus === 'banned' && (!a.banStatus || a.banStatus === 'ACTIVE')) return false;
                 if (filterStatus === 'exhausted') {
                     const isExhausted = a.usageLimit > 0 && a.usageCurrent >= a.usageLimit;
@@ -2496,13 +2809,52 @@
                 return true;
             });
         }
+        function updateStatusTabCounts() {
+            const allCount = accountsData.length;
+            const availableCount = accountsData.filter(a => {
+                const isEnabled = a.enabled;
+                const notBanned = !a.banStatus || a.banStatus === 'ACTIVE';
+                const notExhausted = a.usageLimit === 0 || a.usageCurrent < a.usageLimit;
+                return isEnabled && notBanned && notExhausted;
+            }).length;
+            const enabledCount = accountsData.filter(a => a.enabled).length;
+            const disabledCount = accountsData.filter(a => !a.enabled && (!a.banStatus || a.banStatus === 'ACTIVE')).length;
+            const bannedCount = accountsData.filter(a => a.banStatus && a.banStatus !== 'ACTIVE').length;
+            const exhaustedCount = accountsData.filter(a => a.usageLimit > 0 && a.usageCurrent >= a.usageLimit).length;
+
+            document.querySelectorAll('.status-tab').forEach(tab => {
+                const status = tab.dataset.status;
+                let count = 0;
+                if (status === 'all') count = allCount;
+                else if (status === 'available') count = availableCount;
+                else if (status === 'enabled') count = enabledCount;
+                else if (status === 'disabled') count = disabledCount;
+                else if (status === 'banned') count = bannedCount;
+                else if (status === 'exhausted') count = exhaustedCount;
+
+                const label = tab.getAttribute('data-i18n');
+                tab.textContent = t(label) + ' (' + count + ')';
+            });
+        }
+        function switchStatusTab(status) {
+            filterStatus = status;
+            document.querySelectorAll('.status-tab').forEach(tab => {
+                if (tab.dataset.status === status) {
+                    tab.classList.add('active');
+                } else {
+                    tab.classList.remove('active');
+                }
+            });
+            try {
+                localStorage.setItem('filterStatus', filterStatus);
+            } catch (e) { }
+            renderAccounts();
+        }
         function onFilterChange() {
             filterKeyword = document.getElementById('filterSearch').value;
-            filterStatus = document.getElementById('filterStatusSelect').value;
             filterGroup = (document.getElementById('filterGroupSelect') || {}).value || 'all';
             try {
                 localStorage.setItem('filterKeyword', filterKeyword);
-                localStorage.setItem('filterStatus', filterStatus);
                 localStorage.setItem('filterGroup', filterGroup);
             } catch (e) { }
             renderAccounts();
@@ -2510,6 +2862,23 @@
         function onSortChange() {
             sortField = document.getElementById('sortSelect').value;
             try { localStorage.setItem('sortField', sortField); } catch (e) { }
+            renderAccounts();
+        }
+        function clearFilters() {
+            filterKeyword = '';
+            filterStatus = 'all';
+            filterGroup = 'all';
+            sortField = '';
+            document.getElementById('filterSearch').value = '';
+            switchStatusTab('all');
+            document.getElementById('filterGroupSelect').value = 'all';
+            document.getElementById('sortSelect').value = '';
+            try {
+                localStorage.removeItem('filterKeyword');
+                localStorage.removeItem('filterStatus');
+                localStorage.removeItem('filterGroup');
+                localStorage.removeItem('sortField');
+            } catch (e) { }
             renderAccounts();
         }
         function applySort(list) {
@@ -2682,55 +3051,26 @@
             selectedAccounts.clear();
             updateBatchBar();
         }
-        async function batchSilent() {
+        async function batchDelete() {
             const ids = Array.from(selectedAccounts);
             if (ids.length === 0) return;
-            if (!confirm(t('batch.confirmSilent', ids.length))) return;
-            try {
-                const res = await fetch('/admin/api/accounts/batch', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-Admin-Password': password },
-                    body: JSON.stringify({ ids, action: 'setSilent' })
-                });
-                const d = await res.json();
-                if (d.success) {
-                    alert(t('batch.silentResult', d.count || ids.length));
-                    accountsData.forEach(a => { if (ids.includes(a.id)) { a.silent = true; a.enabled = false; a.silentReason = 'manual batch'; a.silentTime = Math.floor(Date.now() / 1000); } });
-                    selectedAccounts.clear();
-                    updateBatchBar();
-                    renderAccounts();
-                    loadStats();
-                } else {
-                    alert(t('common.failed') + ': ' + (d.error || ''));
-                }
-            } catch (e) {
-                alert(t('common.failed'));
+            if (!confirm(t('batch.confirmDelete', ids.length))) return;
+            let success = 0, fail = 0;
+            for (const id of ids) {
+                try {
+                    const res = await fetch('/admin/api/accounts/' + id, {
+                        method: 'DELETE',
+                        headers: { 'X-Admin-Password': password }
+                    });
+                    const d = await res.json();
+                    if (d.success) success++; else fail++;
+                } catch { fail++; }
             }
-        }
-        async function batchRemoveSilent() {
-            const ids = Array.from(selectedAccounts);
-            if (ids.length === 0) return;
-            if (!confirm(t('batch.confirmRemoveSilent', ids.length))) return;
-            try {
-                const res = await fetch('/admin/api/accounts/batch', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-Admin-Password': password },
-                    body: JSON.stringify({ ids, action: 'removeSilent' })
-                });
-                const d = await res.json();
-                if (d.success) {
-                    alert(t('batch.removeSilentResult', d.count || ids.length));
-                    accountsData.forEach(a => { if (ids.includes(a.id)) { a.silent = false; if (!a.banStatus || a.banStatus === 'ACTIVE') a.enabled = true; a.silentReason = ''; a.silentTime = 0; } });
-                    selectedAccounts.clear();
-                    updateBatchBar();
-                    renderAccounts();
-                    loadStats();
-                } else {
-                    alert(t('common.failed') + ': ' + (d.error || ''));
-                }
-            } catch (e) {
-                alert(t('common.failed'));
-            }
+            alert(t('batch.deleteResult', success, fail));
+            selectedAccounts.clear();
+            updateBatchBar();
+            loadAccounts();
+            loadStats();
         }
         async function refreshAllModels() {
             if (!confirm(t('models.confirmRefreshAll'))) return;
@@ -2762,6 +3102,7 @@
         function renderAccounts() {
             const container = document.getElementById('accountsList');
             if (!container) return;
+            updateStatusTabCounts();
             const filtered = applySort(getFilteredAccounts());
             if (filtered.length === 0) {
                 container.innerHTML = '<p style="text-align:center;color:#64748b;padding:30px">' + t('accounts.empty') + '</p>';
@@ -2813,6 +3154,7 @@
                     '<div class="account-stat"><div class="account-stat-value">' + formatNum(a.totalTokens || 0) + '</div><div class="account-stat-label">' + t('accounts.tokens') + '</div></div>' +
                     '<div class="account-stat"><div class="account-stat-value">' + (a.totalCredits || 0).toFixed(1) + '</div><div class="account-stat-label">' + t('accounts.credits') + '</div></div>' +
                     '<div class="account-stat"><div class="account-stat-value">' + formatTokenExpiry(a.expiresAt) + '</div><div class="account-stat-label">' + t('accounts.expiry') + '</div></div>' +
+                    '<div class="account-stat"><div class="account-stat-value">' + formatLastUsed(a.lastUsed) + '</div><div class="account-stat-label">' + t('accounts.lastUsed') + '</div></div>' +
                     '<div class="account-stat"><div class="account-stat-value"><select onchange="quickSetWeight(\'' + a.id + '\',this.value)" style="width:52px;padding:1px 2px;border:1px solid #e2e8f0;border-radius:4px;font-size:12px;text-align:center;cursor:pointer;background:#fff">' +
                     [0,1,2,3,4,5].map(w => '<option value="' + w + '"' + (weightVal === w ? ' selected' : '') + '>' + w + '</option>').join('') +
                     '</select></div><div class="account-stat-label">' + t('accounts.weight') + '</div></div>' +
@@ -2858,10 +3200,7 @@
             // 检查是否为封禁状态
             const isBanned = a.banStatus && a.banStatus !== 'ACTIVE';
 
-            if (a.silent) {
-                badges.push('<span class="badge" style="background:#64748b;color:#fff">' + t('accounts.silent') + '</span>');
-                badges.push('<span class="badge badge-warning">' + t('accounts.disabled') + '</span>');
-            } else if (isBanned) {
+            if (isBanned) {
                 // 封禁账号：显示"封禁 + 禁用"
                 if (a.banStatus === 'BANNED') {
                     badges.push('<span class="badge badge-banned">' + t('accounts.banned') + '</span>');
@@ -2904,31 +3243,14 @@
             if (diff < 86400) return Math.floor(diff / 3600) + t('time.hours');
             return Math.floor(diff / 86400) + t('time.days');
         }
-        async function toggleSilent(id, silent) {
-            try {
-                const res = await fetch('/admin/api/accounts/' + id, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json', 'X-Admin-Password': password },
-                    body: JSON.stringify({ silent, silentReason: silent ? 'manual' : '' })
-                });
-                const d = await res.json();
-                if (d.success) {
-                    const a = accountsData.find(x => x.id === id);
-                    if (a) {
-                        a.silent = silent;
-                        a.enabled = silent ? false : true;
-                        a.silentReason = silent ? 'manual' : '';
-                        a.silentTime = silent ? Math.floor(Date.now() / 1000) : 0;
-                    }
-                    renderAccounts();
-                    showDetail(id);
-                    loadStats();
-                } else {
-                    alert(t('detail.saveFailed') + ': ' + (d.error || ''));
-                }
-            } catch (e) {
-                alert(t('detail.saveFailed'));
-            }
+        function formatLastUsed(ts) {
+            if (!ts) return t('time.never');
+            const diff = Date.now() / 1000 - ts;
+            if (diff < 60) return t('time.justNow');
+            if (diff < 3600) return Math.floor(diff / 60) + t('time.minutesAgo');
+            if (diff < 86400) return Math.floor(diff / 3600) + t('time.hoursAgo');
+            if (diff < 2592000) return Math.floor(diff / 86400) + t('time.daysAgo');
+            return Math.floor(diff / 2592000) + t('time.monthsAgo');
         }
         async function refreshAccount(id) {
             const card = event.target.closest('.account-card');
@@ -2949,10 +3271,8 @@
                 '<div class="detail-item"><div class="detail-label">' + t('detail.userId') + '</div><div class="detail-value">' + (a.userId || '-') + '</div></div>' +
                 '<div class="detail-item"><div class="detail-label">' + t('detail.authMethod') + '</div><div class="detail-value">' + formatAuthMethod(a.provider || a.authMethod) + '</div></div>' +
                 '<div class="detail-item"><div class="detail-label">' + t('detail.region') + '</div><div class="detail-value">' + (a.region || 'us-east-1') + '</div></div>' +
-                '<div class="detail-item"><div class="detail-label">' + t('detail.status') + '</div><div class="detail-value">' + (a.silent ? t('accounts.silent') : (a.enabled ? t('accounts.enabled') : t('accounts.disabled'))) + '</div></div>' +
-                (a.silent ? '<div class="detail-item"><div class="detail-label">' + t('detail.silentReason') + '</div><div class="detail-value">' + escapeHtml(a.silentReason || '-') + '</div></div>' +
-                '<div class="detail-item"><div class="detail-label">' + t('detail.silentTime') + '</div><div class="detail-value">' + (a.silentTime ? new Date(a.silentTime * 1000).toLocaleString() : '-') + '</div></div>' : '') +
-                '</div><div style="margin-top:10px"><button class="btn btn-sm btn-secondary" onclick="toggleSilent(\'' + id + '\',' + (!a.silent) + ')">' + (a.silent ? t('detail.removeSilent') : t('detail.setSilent')) + '</button></div></div>' +
+                '<div class="detail-item"><div class="detail-label">' + t('detail.status') + '</div><div class="detail-value">' + (a.enabled ? t('accounts.enabled') : t('accounts.disabled')) + '</div></div>' +
+                '</div></div>' +
                 '<div class="detail-section"><h4>' + t('detail.machineId') + '</h4><div class="machine-id-row">' +
                 '<input type="text" id="machineIdInput" value="' + (a.machineId || '') + '" placeholder="UUID">' +
                 '<button class="btn btn-sm btn-secondary" onclick="generateMachineId()">' + t('detail.generate') + '</button>' +
@@ -3816,6 +4136,7 @@
             else if (tab === 'alerts') { startAlerts(); stopObserve(); stopBackups(); stopRequests(); }
             else if (tab === 'requests') { startRequests(); stopObserve(); stopBackups(); stopAlerts(); }
             else { stopObserve(); stopBackups(); stopAlerts(); stopRequests(); }
+            try { localStorage.setItem('currentTab', tab); } catch (e) { }
         }
         async function toggleAccount(id, enabled) {
             await fetch('/admin/api/accounts/' + id, {
@@ -4206,6 +4527,201 @@
         }
 
         function closeExportModal() { document.getElementById('exportModal').classList.remove('active'); }
+
+        let importState = { importing: false, current: 0, total: 0, success: 0, warning: 0, failed: 0, skipped: 0, results: [] };
+
+        function showImportModal() {
+            importState = { importing: false, current: 0, total: 0, success: 0, warning: 0, failed: 0, skipped: 0, results: [] };
+            renderImportModal();
+            document.getElementById('importModal').classList.add('active');
+        }
+
+        function closeImportModal() {
+            if (importState.importing) {
+                if (!confirm(t('import.confirmClose') || '导入进行中，确定关闭？')) return;
+            }
+            document.getElementById('importModal').classList.remove('active');
+        }
+
+        function renderImportModal() {
+            const body = document.getElementById('importBody');
+            const s = importState;
+
+            if (!s.importing && s.results.length === 0) {
+                body.innerHTML =
+                    '<div class="form-group"><label>' + t('import.jsonLabel') + '</label>' +
+                    '<textarea id="importJsonInput" placeholder="' + t('import.jsonPlaceholder') + '" style="min-height:200px;font-family:monospace;font-size:12px"></textarea></div>' +
+                    '<div class="modal-footer">' +
+                    '<button class="btn btn-secondary" onclick="closeImportModal()">' + t('common.cancel') + '</button>' +
+                    '<button class="btn btn-primary" onclick="startImport()">' + t('import.start') + '</button>' +
+                    '</div>';
+            } else {
+                const progress = s.total > 0 ? Math.round((s.current / s.total) * 100) : 0;
+                body.innerHTML =
+                    '<div style="margin-bottom:16px">' +
+                    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
+                    '<span style="font-size:14px;font-weight:600;color:#374151">' +
+                    (s.importing ? t('import.importing') : t('import.completed')) + '</span>' +
+                    '<span style="font-size:13px;color:#64748b">' + t('import.progress') + ': ' + s.current + ' / ' + s.total + '</span>' +
+                    '</div>' +
+                    '<div style="width:100%;height:8px;background:#e2e8f0;border-radius:4px;overflow:hidden">' +
+                    '<div style="width:' + progress + '%;height:100%;background:#7c3aed;transition:width 0.3s"></div>' +
+                    '</div>' +
+                    '</div>' +
+                    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px">' +
+                    '<div style="padding:8px;background:#f0fdf4;border-radius:6px;text-align:center">' +
+                    '<div style="font-size:20px;font-weight:700;color:#16a34a">' + s.success + '</div>' +
+                    '<div style="font-size:11px;color:#15803d">' + t('import.success') + '</div>' +
+                    '</div>' +
+                    '<div style="padding:8px;background:#fef3c7;border-radius:6px;text-align:center">' +
+                    '<div style="font-size:20px;font-weight:700;color:#d97706">' + s.warning + '</div>' +
+                    '<div style="font-size:11px;color:#b45309">' + t('import.warning') + '</div>' +
+                    '</div>' +
+                    '<div style="padding:8px;background:#fee2e2;border-radius:6px;text-align:center">' +
+                    '<div style="font-size:20px;font-weight:700;color:#dc2626">' + s.failed + '</div>' +
+                    '<div style="font-size:11px;color:#b91c1c">' + t('import.failed') + '</div>' +
+                    '</div>' +
+                    '<div style="padding:8px;background:#f1f5f9;border-radius:6px;text-align:center">' +
+                    '<div style="font-size:20px;font-weight:700;color:#64748b">' + s.skipped + '</div>' +
+                    '<div style="font-size:11px;color:#475569">' + t('import.skipped') + '</div>' +
+                    '</div>' +
+                    '</div>' +
+                    '<div style="max-height:300px;overflow-y:auto;margin-bottom:16px">' +
+                    (s.results.length > 0 ? s.results.map(r => {
+                        let bgColor = '#f8fafc', textColor = '#64748b', statusText = '';
+                        if (r.status === 'success') { bgColor = '#f0fdf4'; textColor = '#16a34a'; statusText = '✓ ' + (r.email || r.id); }
+                        else if (r.status === 'warning') { bgColor = '#fef3c7'; textColor = '#d97706'; statusText = '⚠ ' + (r.error || 'Warning'); }
+                        else if (r.status === 'failed') { bgColor = '#fee2e2'; textColor = '#dc2626'; statusText = '✗ ' + (r.error || 'Failed'); }
+                        else if (r.status === 'skipped') { bgColor = '#f1f5f9'; textColor = '#64748b'; statusText = '○ Skipped'; }
+                        else { bgColor = '#ede9fe'; textColor = '#7c3aed'; statusText = '⋯ ' + t('import.processing'); }
+
+                        return '<div style="padding:8px 12px;margin-bottom:4px;background:' + bgColor + ';border-radius:6px">' +
+                            '<div style="font-size:13px;font-weight:500;color:' + textColor + '">' + statusText + '</div>' +
+                            (r.quota ? '<div style="font-size:11px;color:#64748b;margin-top:2px">' + r.quota + '</div>' : '') +
+                            '</div>';
+                    }).join('') : '<div style="text-align:center;color:#94a3b8;padding:20px">' + t('import.processing') + '</div>') +
+                    '</div>' +
+                    '<div class="modal-footer">' +
+                    (s.importing ? '' : '<button class="btn btn-primary" onclick="closeImportModal()">' + t('common.cancel') + '</button>') +
+                    '</div>';
+            }
+        }
+
+        async function startImport() {
+            const input = document.getElementById('importJsonInput');
+            const jsonText = input.value.trim();
+            if (!jsonText) { alert(t('import.emptyJson')); return; }
+
+            let items;
+            try {
+                const json = JSON.parse(jsonText);
+                if (json.accounts && Array.isArray(json.accounts)) {
+                    items = json.accounts.map(a => {
+                        const c = a.credentials || {};
+                        return {
+                            refreshToken: c.refreshToken || a.refreshToken,
+                            clientId: c.clientId || a.clientId,
+                            clientSecret: c.clientSecret || a.clientSecret,
+                            region: c.region || a.region,
+                            authMethod: c.authMethod || a.authMethod,
+                            provider: c.provider || a.provider || a.idp,
+                            email: a.email
+                        };
+                    });
+                } else {
+                    items = Array.isArray(json) ? json : [json];
+                }
+            } catch (e) {
+                alert(t('credentials.jsonError'));
+                return;
+            }
+
+            importState.importing = true;
+            importState.total = items.length;
+            importState.current = 0;
+            importState.success = 0;
+            importState.warning = 0;
+            importState.failed = 0;
+            importState.skipped = 0;
+            importState.results = [];
+            renderImportModal();
+
+            for (let i = 0; i < items.length; i++) {
+                const item = items[i];
+                importState.current = i + 1;
+
+                importState.results.push({ status: 'processing', email: item.email || `#${i+1}` });
+                renderImportModal();
+
+                if (!item.refreshToken) {
+                    importState.skipped++;
+                    importState.results[i] = { status: 'skipped', error: 'missing refreshToken' };
+                    renderImportModal();
+                    continue;
+                }
+
+                let authMethod = item.authMethod || '';
+                if (item.clientId && item.clientSecret) {
+                    authMethod = 'idc';
+                } else if (!authMethod || authMethod === 'social') {
+                    authMethod = 'social';
+                } else {
+                    authMethod = authMethod.toLowerCase() === 'idc' ? 'idc' : 'social';
+                }
+
+                let provider = item.provider || '';
+                if (!provider && authMethod === 'social') provider = 'Google';
+                if (!provider && authMethod === 'idc') provider = 'BuilderId';
+
+                const payload = {
+                    refreshToken: item.refreshToken,
+                    accessToken: item.accessToken || '',
+                    clientId: item.clientId || '',
+                    clientSecret: item.clientSecret || '',
+                    authMethod: authMethod,
+                    provider: provider,
+                    region: item.region || 'us-east-1'
+                };
+
+                try {
+                    const res = await fetch('/admin/api/auth/credentials', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-Admin-Password': password },
+                        body: JSON.stringify(payload)
+                    });
+                    const d = await res.json();
+
+                    if (d.success) {
+                        importState.success++;
+                        const acc = d.account || {};
+                        let quota = '';
+                        if (acc.subscriptionType) quota += acc.subscriptionType;
+                        if (acc.credits) quota += (quota ? ' · ' : '') + acc.credits + ' credits';
+                        importState.results[i] = {
+                            status: 'success',
+                            email: acc.email || acc.id,
+                            id: acc.id,
+                            quota: quota
+                        };
+                        if (acc.id) autoRefreshNewAccount(acc.id);
+                    } else {
+                        importState.failed++;
+                        importState.results[i] = { status: 'failed', error: d.error || 'unknown error' };
+                    }
+                } catch (e) {
+                    importState.failed++;
+                    importState.results[i] = { status: 'failed', error: 'request failed' };
+                }
+
+                renderImportModal();
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+
+            importState.importing = false;
+            renderImportModal();
+            loadAccounts();
+            loadStats();
+        }
 
         function renderExportModal() {
             const body = document.getElementById('exportBody');
@@ -4817,7 +5333,87 @@
         function stopRequests() {
             requestsActive = false;
         }
-    </script>
+    
+        // 自定义弹窗系统
+        function showDialog(message, type = 'info', buttons = []) {
+            return new Promise((resolve) => {
+                const overlay = document.getElementById('dialogOverlay');
+                const icon = document.getElementById('dialogIcon');
+                const msg = document.getElementById('dialogMessage');
+                const btns = document.getElementById('dialogButtons');
+
+                // 设置图标
+                const icons = {
+                    success: '✓',
+                    error: '✕',
+                    warning: '⚠',
+                    info: 'ℹ',
+                    confirm: '?'
+                };
+                icon.textContent = icons[type] || icons.info;
+                icon.className = 'dialog-icon ' + type;
+
+                // 设置消息
+                msg.textContent = message;
+
+                // 设置按钮
+                btns.innerHTML = '';
+                buttons.forEach(btn => {
+                    const button = document.createElement('button');
+                    button.className = 'dialog-btn dialog-btn-' + (btn.primary ? 'primary' : 'secondary');
+                    button.textContent = btn.text;
+                    button.onclick = () => {
+                        overlay.classList.remove('active');
+                        resolve(btn.value);
+                    };
+                    btns.appendChild(button);
+                });
+
+                // 显示弹窗
+                overlay.classList.add('active');
+
+                // 点击遮罩关闭（仅 alert）
+                if (type !== 'confirm') {
+                    overlay.onclick = (e) => {
+                        if (e.target === overlay) {
+                            overlay.classList.remove('active');
+                            resolve(false);
+                        }
+                    };
+                }
+            });
+        }
+
+        function showAlert(message, type = 'info') {
+            return showDialog(message, type, [
+                { text: '确定', value: true, primary: true }
+            ]);
+        }
+
+        function showConfirm(message) {
+            return showDialog(message, 'confirm', [
+                { text: '取消', value: false, primary: false },
+                { text: '确定', value: true, primary: true }
+            ]);
+        }
+
+        // 兼容旧代码：覆盖原生 alert/confirm
+        const _alert = window.alert;
+        const _confirm = window.confirm;
+        window.alert = (msg) => showAlert(String(msg));
+        window.confirm = (msg) => showConfirm(String(msg));
+
+</script>
+
+    <!-- 自定义弹窗 -->
+    <div id="dialogOverlay" class="dialog-overlay">
+        <div class="dialog-box">
+            <div id="dialogIcon" class="dialog-icon"></div>
+            <div id="dialogMessage" class="dialog-message"></div>
+            <div id="dialogButtons" class="dialog-buttons"></div>
+        </div>
+    </div>
+
 </body>
 
 </html>
