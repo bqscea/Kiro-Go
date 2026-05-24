@@ -3,6 +3,7 @@ package pool
 
 import (
 	"kiro-go/config"
+	"kiro-go/logger"
 	"time"
 )
 
@@ -32,6 +33,8 @@ func (p *AccountPool) bindClient(clientIP, accountID string) {
 	defer p.mu.Unlock()
 	p.clientBindings[clientIP] = accountID
 	p.bindingLastSeen[clientIP] = time.Now()
+	// 调试日志：记录绑定操作
+	logger.Debugf("[AccountBinding] Bound client %s to account %s", clientIP, accountID)
 }
 
 // unbindClient 解绑客户端
