@@ -7,7 +7,11 @@ import (
 )
 
 func TestOverageAccountsAreSkippedByDefault(t *testing.T) {
-	p := &AccountPool{}
+	p := &AccountPool{
+		cooldowns:       make(map[string]time.Time),
+		clientBindings:  make(map[string]string),
+		bindingLastSeen: make(map[string]time.Time),
+	}
 	normal := config.Account{ID: "normal"}
 	overLimit := config.Account{ID: "over", UsageCurrent: 10, UsageLimit: 10}
 
@@ -25,7 +29,11 @@ func TestOverageAccountsAreSkippedByDefault(t *testing.T) {
 }
 
 func TestOverageAccountsCanBeSelectedWhenAllowed(t *testing.T) {
-	p := &AccountPool{}
+	p := &AccountPool{
+		cooldowns:       make(map[string]time.Time),
+		clientBindings:  make(map[string]string),
+		bindingLastSeen: make(map[string]time.Time),
+	}
 	overLimit := config.Account{
 		ID:            "over",
 		UsageCurrent:  10,
@@ -55,7 +63,11 @@ func TestOverageWeightIsLowerThanNormalWeight(t *testing.T) {
 }
 
 func TestGetNextKeepsFiveMinuteTokenAvailable(t *testing.T) {
-	p := &AccountPool{}
+	p := &AccountPool{
+		cooldowns:       make(map[string]time.Time),
+		clientBindings:  make(map[string]string),
+		bindingLastSeen: make(map[string]time.Time),
+	}
 	account := config.Account{
 		ID:          "acct-1",
 		AccessToken: "access-token",

@@ -332,7 +332,13 @@ func (p *AccountPool) GetNextForModel(model string, clientIP string) *config.Acc
 	}
 
 	if config.GetLoadBalancingMode() == "priority" {
-		return p.getNextPriorityForModel(model)
+		acc := p.getNextPriorityForModel(model)
+		if acc != nil && clientIP != "" {
+			p.mu.RUnlock()
+			p.bindClient(clientIP, acc.ID)
+			p.mu.RLock()
+		}
+		return acc
 	}
 
 	allowOverUsage := config.GetAllowOverUsage()
@@ -369,6 +375,9 @@ func (p *AccountPool) GetNextForModel(model string, clientIP string) *config.Acc
 		}
 		p.mu.RUnlock()
 		p.markInUse(acc.ID)
+		if clientIP != "" {
+			p.bindClient(clientIP, acc.ID)
+		}
 		p.mu.RLock()
 		return acc
 	}
@@ -890,7 +899,13 @@ func (p *AccountPool) GetNextForModelAndGroupsExcluding(model string, allowedGro
 	}
 
 	if config.GetLoadBalancingMode() == "priority" {
-		return p.getNextPriorityForModelAndGroups(model, allowedGroups, excludeIDs)
+		acc := p.getNextPriorityForModelAndGroups(model, allowedGroups, excludeIDs)
+		if acc != nil && clientIP != "" {
+			p.mu.RUnlock()
+			p.bindClient(clientIP, acc.ID)
+			p.mu.RLock()
+		}
+		return acc
 	}
 
 	allowOverUsage := config.GetAllowOverUsage()
@@ -935,6 +950,9 @@ func (p *AccountPool) GetNextForModelAndGroupsExcluding(model string, allowedGro
 		}
 		p.mu.RUnlock()
 		p.markInUse(acc.ID)
+		if clientIP != "" {
+			p.bindClient(clientIP, acc.ID)
+		}
 		p.mu.RLock()
 		return acc
 	}
