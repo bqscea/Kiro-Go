@@ -107,6 +107,7 @@ type Account struct {
 	LastUsed     int64   `json:"lastUsed,omitempty"`     // Last request timestamp
 	TotalTokens  int     `json:"totalTokens,omitempty"`  // Cumulative tokens processed
 	TotalCredits float64 `json:"totalCredits,omitempty"` // Cumulative credits consumed
+	CreatedAt    int64   `json:"createdAt,omitempty"`    // Account creation timestamp (Unix seconds)
 }
 
 // PromptFilterRule defines a single custom prompt sanitization rule.

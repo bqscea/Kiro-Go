@@ -349,7 +349,7 @@ func (h *Handler) refreshAllAccounts() {
 		if !wasExhausted && nowExhausted {
 			account.ExhaustedTime = time.Now().Unix()
 			config.UpdateAccount(account.ID, *account)
-			getObserveStore().RecordAccountEvent(account.ID, account.Email, "exhausted", "Usage limit reached")
+			getObserveStore().RecordAccountEvent(account.ID, account.Email, "exhausted", "Usage limit reached", account.CreatedAt)
 		}
 	}
 	h.pool.Reload()
@@ -831,7 +831,7 @@ func (h *Handler) refreshModelsCache() {
 						logger.Errorf("[ModelsCache] Failed to update account ban status: %v", updateErr)
 					}
 
-					getObserveStore().RecordAccountEvent(acc.ID, acc.Email, "banned", updatedAccount.BanReason)
+					getObserveStore().RecordAccountEvent(acc.ID, acc.Email, "banned", updatedAccount.BanReason, acc.CreatedAt)
 				}
 				return
 			}
@@ -883,7 +883,7 @@ func (h *Handler) fetchAndCacheAccountModels(account *config.Account) error {
 			}
 
 			// 记录封禁事件
-			getObserveStore().RecordAccountEvent(account.ID, account.Email, "banned", updatedAccount.BanReason)
+			getObserveStore().RecordAccountEvent(account.ID, account.Email, "banned", updatedAccount.BanReason, account.CreatedAt)
 		}
 		return err
 	}
@@ -2711,6 +2711,9 @@ func (h *Handler) apiAddAccount(w http.ResponseWriter, r *http.Request) {
 	if account.Region == "" {
 		account.Region = "us-east-1"
 	}
+	if account.CreatedAt == 0 {
+		account.CreatedAt = time.Now().Unix()
+	}
 
 	// 导入时刷新 token 以获取有效期和最新凭证
 	if account.RefreshToken != "" {
@@ -3038,7 +3041,7 @@ func (h *Handler) apiBatchAccounts(w http.ResponseWriter, r *http.Request) {
 
 			// 记录额度耗尽事件
 			if !wasExhausted && nowExhausted {
-				getObserveStore().RecordAccountEvent(id, account.Email, "exhausted", "Usage limit reached")
+				getObserveStore().RecordAccountEvent(id, account.Email, "exhausted", "Usage limit reached", account.CreatedAt)
 			}
 		}
 		h.pool.Reload()
@@ -3492,6 +3495,7 @@ func (h *Handler) apiGetStatus(w http.ResponseWriter, r *http.Request) {
 	totalExhausted := 0
 	todayExhausted := 0
 	availableAccounts := 0
+	standbyAccounts := 0
 	todayStart := time.Now().Truncate(24 * time.Hour).Unix()
 
 	for _, a := range accounts {
@@ -3511,12 +3515,17 @@ func (h *Handler) apiGetStatus(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if a.Enabled && !isBanned && !isExhausted {
-			availableAccounts++
+			if a.Standby {
+				standbyAccounts++
+			} else {
+				availableAccounts++
+			}
 		}
 	}
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"accounts":        availableAccounts,
+		"accounts":        availableAccounts + standbyAccounts,
+		"standbyAccounts": standbyAccounts,
 		"available":       h.pool.AvailableCount(),
 		"totalRequests":   h.totalRequests,
 		"successRequests": h.successRequests,
@@ -3811,7 +3820,7 @@ func (h *Handler) refreshAccountInfoAsync(accountID string) {
 	if !wasExhausted && nowExhausted {
 		account.ExhaustedTime = time.Now().Unix()
 		config.UpdateAccount(accountID, *account)
-		getObserveStore().RecordAccountEvent(accountID, account.Email, "exhausted", "Usage limit reached")
+		getObserveStore().RecordAccountEvent(accountID, account.Email, "exhausted", "Usage limit reached", account.CreatedAt)
 	}
 }
 
@@ -3899,7 +3908,7 @@ func (h *Handler) apiRefreshAccount(w http.ResponseWriter, r *http.Request, id s
 	if !wasExhausted && nowExhausted {
 		account.ExhaustedTime = time.Now().Unix()
 		config.UpdateAccount(id, *account)
-		getObserveStore().RecordAccountEvent(id, account.Email, "exhausted", "Usage limit reached")
+		getObserveStore().RecordAccountEvent(id, account.Email, "exhausted", "Usage limit reached", account.CreatedAt)
 	}
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -4022,7 +4031,7 @@ func (h *Handler) apiGetAccountModels(w http.ResponseWriter, r *http.Request, id
 			}
 
 			// 记录封禁事件
-			getObserveStore().RecordAccountEvent(account.ID, account.Email, "banned", updatedAccount.BanReason)
+			getObserveStore().RecordAccountEvent(account.ID, account.Email, "banned", updatedAccount.BanReason, account.CreatedAt)
 		}
 
 		w.WriteHeader(500)

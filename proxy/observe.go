@@ -68,6 +68,7 @@ type accountEventRecord struct {
 	Email     string `json:"email,omitempty"`
 	EventType string `json:"eventType"` // "banned" | "exhausted"
 	Reason    string `json:"reason,omitempty"`
+	CreatedAt int64  `json:"createdAt,omitempty"` // Account creation timestamp
 }
 
 // observeStore 全局只读单例，写入加锁。
@@ -487,7 +488,7 @@ func (s *observeStore) RecentErrors(limit int) []errorRecord {
 }
 
 // RecordAccountEvent 记录账号事件（封禁、额度耗尽）
-func (s *observeStore) RecordAccountEvent(accountID, email, eventType, reason string) {
+func (s *observeStore) RecordAccountEvent(accountID, email, eventType, reason string, createdAt int64) {
 	if s == nil {
 		return
 	}
@@ -497,6 +498,7 @@ func (s *observeStore) RecordAccountEvent(accountID, email, eventType, reason st
 		Email:     email,
 		EventType: eventType,
 		Reason:    reason,
+		CreatedAt: createdAt,
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -1215,6 +1215,10 @@
                 <div class="stat-label" data-i18n="stats.accounts"></div>
             </div>
             <div class="stat-card">
+                <div class="stat-value" id="statStandby">0</div>
+                <div class="stat-label" data-i18n="stats.standby"></div>
+            </div>
+            <div class="stat-card">
                 <div class="stat-value" id="statRequests">0</div>
                 <div class="stat-label" data-i18n="stats.requests"></div>
             </div>
@@ -1716,6 +1720,7 @@
                 'login.connectError': '连接失败',
                 'status.running': '运行中',
                 'stats.accounts': '账号',
+                'stats.standby': '备用',
                 'stats.requests': '请求',
                 'stats.success': '成功',
                 'stats.failed': '失败',
@@ -2163,6 +2168,7 @@
                 'stats.accountEvents': '账号事件',
                 'observe.eventTime': '时间',
                 'observe.eventAccount': '账号',
+                'observe.eventCreatedAt': '加入时间',
                 'observe.eventType': '类型',
                 'observe.eventMessage': '详情',
                 'observe.eventExhausted': '额度耗尽',
@@ -2262,6 +2268,7 @@
                 'login.connectError': 'Connection failed',
                 'status.running': 'Running',
                 'stats.accounts': 'Accounts',
+                'stats.standby': 'Standby',
                 'stats.requests': 'Requests',
                 'stats.success': 'Success',
                 'stats.failed': 'Failed',
@@ -2700,6 +2707,7 @@
                 'stats.accountEvents': 'Account Events',
                 'observe.eventTime': 'Time',
                 'observe.eventAccount': 'Account',
+                'observe.eventCreatedAt': 'Joined',
                 'observe.eventType': 'Type',
                 'observe.eventMessage': 'Details',
                 'observe.eventExhausted': 'Exhausted',
@@ -2974,6 +2982,7 @@
             const res = await fetch('/admin/api/status', { headers: { 'X-Admin-Password': password } });
             const d = await res.json();
             document.getElementById('statAccounts').textContent = d.accounts || 0;
+            document.getElementById('statStandby').textContent = d.standbyAccounts || 0;
             document.getElementById('statRequests').textContent = d.totalRequests || 0;
             document.getElementById('statSuccess').textContent = d.successRequests || 0;
             document.getElementById('statFailed').textContent = d.failedRequests || 0;
@@ -5414,6 +5423,7 @@
             const head = `<thead><tr style="background:#f8fafc;text-align:left">
                 <th style="padding:6px 8px;font-size:12px">${escapeHtml(t('observe.eventTime'))}</th>
                 <th style="padding:6px 8px;font-size:12px">${escapeHtml(t('observe.eventAccount'))}</th>
+                <th style="padding:6px 8px;font-size:12px">${escapeHtml(t('observe.eventCreatedAt'))}</th>
                 <th style="padding:6px 8px;font-size:12px">${escapeHtml(t('observe.eventType'))}</th>
                 <th style="padding:6px 8px;font-size:12px">${escapeHtml(t('observe.eventMessage'))}</th>
             </tr></thead>`;
@@ -5423,9 +5433,11 @@
                 const typeKey = 'observe.event' + e.eventType.charAt(0).toUpperCase() + e.eventType.slice(1);
                 const typeLabel = t(typeKey) || e.eventType;
                 const color = typeColors[e.eventType] || '#475569';
+                const createdAt = e.createdAt ? fmtTime(e.createdAt) : '-';
                 return `<tr style="border-top:1px solid #f1f5f9">
                     <td style="padding:6px 8px;font-size:12px;color:#475569;white-space:nowrap;font-family:ui-monospace,monospace">${escapeHtml(fmtTime(e.ts))}</td>
                     <td style="padding:6px 8px;font-size:13px">${escapeHtml(acct)}</td>
+                    <td style="padding:6px 8px;font-size:12px;color:#64748b;white-space:nowrap;font-family:ui-monospace,monospace">${escapeHtml(createdAt)}</td>
                     <td style="padding:6px 8px;font-size:12px;color:${color};font-weight:500">${escapeHtml(typeLabel)}</td>
                     <td style="padding:6px 8px;font-size:12px;color:#475569">${escapeHtml(e.message || '-')}</td>
                 </tr>`;
