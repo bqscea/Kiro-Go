@@ -1246,6 +1246,10 @@
                 <div class="stat-value" id="statTodayBanned">0</div>
                 <div class="stat-label" data-i18n="stats.todayBanned"></div>
             </div>
+            <div class="stat-card">
+                <div class="stat-value" id="statTodayExhausted">0</div>
+                <div class="stat-label" data-i18n="stats.todayExhausted"></div>
+            </div>
         </div>
         <div class="tabs">
             <div class="tab active" data-tab="accounts" data-i18n="tabs.accounts"></div>
@@ -1717,7 +1721,8 @@
                 'stats.failed': '失败',
                 'stats.banned': '总封禁',
                 'stats.todayBanned': '今日封禁',
-                'stats.exhausted': '额度耗尽',
+                'stats.exhausted': '总耗尽',
+                'stats.todayExhausted': '今日耗尽',
                 'tabs.accounts': '账号',
                 'tabs.settings': '设置',
                 'tabs.api': 'API',
@@ -2138,6 +2143,8 @@
                 'observe.activeAccts': '活跃账号',
                 'observe.totalAccts': '记录账号',
                 'observe.totalModels': '使用模型',
+                'observe.totalExhausted': '总耗尽',
+                'observe.todayExhausted': '今日耗尽',
                 'observe.heatmap': '账号热图（近 60 分钟，每格 1 分钟）',
                 'observe.heatmapHint': '颜色深浅 = 请求数；红色 = 失败；悬停查看详情',
                 'observe.keys': 'API Key 当前用量',
@@ -2260,7 +2267,8 @@
                 'stats.failed': 'Failed',
                 'stats.banned': 'Banned',
                 'stats.todayBanned': 'Today',
-                'stats.exhausted': 'Exhausted',
+                'stats.exhausted': 'Total Exhausted',
+                'stats.todayExhausted': 'Today Exhausted',
                 'tabs.accounts': 'Accounts',
                 'tabs.settings': 'Settings',
                 'tabs.api': 'API',
@@ -2672,6 +2680,8 @@
                 'observe.activeAccts': 'Active Accts',
                 'observe.totalAccts': 'Tracked Accts',
                 'observe.totalModels': 'Models',
+                'observe.totalExhausted': 'Total Exhausted',
+                'observe.todayExhausted': 'Today Exhausted',
                 'observe.heatmap': 'Account Heatmap (60 min × 1-min cells)',
                 'observe.heatmapHint': 'Color intensity = req count; red = failures; hover for detail',
                 'observe.keys': 'API Key Live Usage',
@@ -2972,6 +2982,7 @@
             document.getElementById('statBanned').textContent = d.totalBanned || 0;
             document.getElementById('statTodayBanned').textContent = d.todayBanned || 0;
             document.getElementById('statExhausted').textContent = d.totalExhausted || 0;
+            document.getElementById('statTodayExhausted').textContent = d.todayExhausted || 0;
         }
         async function loadAccounts() {
             const res = await fetch('/admin/api/accounts', { headers: { 'X-Admin-Password': password } });
@@ -5264,6 +5275,8 @@
                 ['observe.credits60', fmtNum(o.credits60 || 0)],
                 ['observe.activeAccts', (o.activeAccts || 0) + ' / ' + (o.totalAccts || 0)],
                 ['observe.totalModels', String(o.totalModels || 0)],
+                ['observe.totalExhausted', String(o.totalExhausted || 0)],
+                ['observe.todayExhausted', String(o.todayExhausted || 0)],
             ];
             el.innerHTML = cards.map(([k, v]) =>
                 `<div class="stat-card"><div class="stat-value" style="font-size:20px">${escapeHtml(v)}</div><div class="stat-label">${escapeHtml(t(k))}</div></div>`
