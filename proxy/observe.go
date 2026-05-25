@@ -492,16 +492,37 @@ func (s *observeStore) RecordAccountEvent(accountID, email, eventType, reason st
 	if s == nil {
 		return
 	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// 去重：检查最近5分钟内是否有相同事件
+	now := time.Now().Unix()
+	dedupeWindow := int64(300) // 5分钟
+
+	for i := 0; i < len(s.accountEvents); i++ {
+		idx := (s.accountEventIdx - 1 - i + len(s.accountEvents)) % len(s.accountEvents)
+		rec := s.accountEvents[idx]
+		if rec.TS == 0 {
+			break
+		}
+		if now-rec.TS > dedupeWindow {
+			break
+		}
+		if rec.AccountID == accountID && rec.EventType == eventType {
+			return // 重复事件，跳过
+		}
+	}
+
+	// 写入新记录
 	rec := accountEventRecord{
-		TS:        time.Now().Unix(),
+		TS:        now,
 		AccountID: accountID,
 		Email:     email,
 		EventType: eventType,
 		Reason:    reason,
 		CreatedAt: createdAt,
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.accountEvents[s.accountEventIdx] = rec
 	s.accountEventIdx = (s.accountEventIdx + 1) % len(s.accountEvents)
 }
