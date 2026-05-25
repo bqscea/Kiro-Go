@@ -2512,6 +2512,8 @@ func (h *Handler) handleAdminAPI(w http.ResponseWriter, r *http.Request) {
 		h.apiGetStats(w, r)
 	case path == "/stats/reset" && r.Method == "POST":
 		h.apiResetStats(w, r)
+	case path == "/account-events/reset" && r.Method == "POST":
+		h.apiResetAccountEvents(w, r)
 	case path == "/generate-machine-id" && r.Method == "GET":
 		h.apiGenerateMachineId(w, r)
 	case path == "/thinking" && r.Method == "GET":
@@ -3698,6 +3700,12 @@ func (h *Handler) apiResetStats(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	json.NewEncoder(w).Encode(map[string]bool{"success": true})
+}
+
+// apiResetAccountEvents 只清空账号事件记录（封禁、耗尽）
+func (h *Handler) apiResetAccountEvents(w http.ResponseWriter, r *http.Request) {
+	getObserveStore().ResetAccountEvents()
 	json.NewEncoder(w).Encode(map[string]bool{"success": true})
 }
 

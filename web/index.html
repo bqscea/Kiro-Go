@@ -4503,8 +4503,8 @@
         }
         async function resetAccountEvents() {
             if (!confirm(t('settings.confirmResetAccountEvents'))) return;
-            await fetch('/admin/api/stats/reset', { method: 'POST', headers: { 'X-Admin-Password': password } });
-            loadAccountEvents();
+            await fetch('/admin/api/account-events/reset', { method: 'POST', headers: { 'X-Admin-Password': password } });
+            if (typeof loadAccountEvents === 'function') loadAccountEvents();
         }
         function switchTab(tab) {
             document.querySelectorAll('.tab').forEach(tabEl => tabEl.classList.toggle('active', tabEl.dataset.tab === tab));

@@ -567,9 +567,18 @@ func (s *observeStore) Reset() {
 	s.recentErrIdx = 0
 	s.recentRequests = make([]requestRecord, observeRecentReqs)
 	s.recentReqIdx = 0
+	s.startedAt = time.Now().Unix()
+}
+
+// ResetAccountEvents 只清空账号事件记录（封禁、耗尽）
+func (s *observeStore) ResetAccountEvents() {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.accountEvents = make([]accountEventRecord, 100)
 	s.accountEventIdx = 0
-	s.startedAt = time.Now().Unix()
 }
 
 // backgroundObserveTick 5s 周期通过 broadcaster 推送 observe_tick 事件，
