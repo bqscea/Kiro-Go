@@ -345,8 +345,14 @@ func (h *Handler) refreshAllAccounts() {
 		config.UpdateAccountInfo(account.ID, *info)
 		logger.Infof("[BackgroundRefresh] Refreshed %s: %s %.1f/%.1f", account.Email, info.SubscriptionType, info.UsageCurrent, info.UsageLimit)
 
-		// 记录额度耗尽事件与时间戳
-		if !wasExhausted && nowExhausted {
+		// 从耗尽恢复：清零 ExhaustedTime
+		if wasExhausted && !nowExhausted && account.ExhaustedTime > 0 {
+			account.ExhaustedTime = 0
+			config.UpdateAccount(account.ID, *account)
+		}
+
+		// 新耗尽：记录事件并设置 ExhaustedTime（避免重复记录）
+		if !wasExhausted && nowExhausted && account.ExhaustedTime == 0 {
 			account.ExhaustedTime = time.Now().Unix()
 			config.UpdateAccount(account.ID, *account)
 			getObserveStore().RecordAccountEvent(account.ID, account.Email, "exhausted", "Usage limit reached", account.CreatedAt)
@@ -3039,8 +3045,16 @@ func (h *Handler) apiBatchAccounts(w http.ResponseWriter, r *http.Request) {
 			config.UpdateAccountInfo(id, *info)
 			successCount++
 
-			// 记录额度耗尽事件
-			if !wasExhausted && nowExhausted {
+			// 从耗尽恢复：清零 ExhaustedTime
+			if wasExhausted && !nowExhausted && account.ExhaustedTime > 0 {
+				account.ExhaustedTime = 0
+				config.UpdateAccount(id, *account)
+			}
+
+			// 新耗尽：记录事件并设置 ExhaustedTime（避免重复记录）
+			if !wasExhausted && nowExhausted && account.ExhaustedTime == 0 {
+				account.ExhaustedTime = time.Now().Unix()
+				config.UpdateAccount(id, *account)
 				getObserveStore().RecordAccountEvent(id, account.Email, "exhausted", "Usage limit reached", account.CreatedAt)
 			}
 		}
@@ -3816,8 +3830,14 @@ func (h *Handler) refreshAccountInfoAsync(accountID string) {
 	config.UpdateAccountInfo(accountID, *info)
 	logger.Infof("[RefreshAccountInfoAsync] Refreshed %s: %s %.1f/%.1f", account.Email, info.SubscriptionType, info.UsageCurrent, info.UsageLimit)
 
-	// 记录额度耗尽事件与时间戳
-	if !wasExhausted && nowExhausted {
+	// 从耗尽恢复：清零 ExhaustedTime
+	if wasExhausted && !nowExhausted && account.ExhaustedTime > 0 {
+		account.ExhaustedTime = 0
+		config.UpdateAccount(accountID, *account)
+	}
+
+	// 新耗尽：记录事件并设置 ExhaustedTime（避免重复记录）
+	if !wasExhausted && nowExhausted && account.ExhaustedTime == 0 {
 		account.ExhaustedTime = time.Now().Unix()
 		config.UpdateAccount(accountID, *account)
 		getObserveStore().RecordAccountEvent(accountID, account.Email, "exhausted", "Usage limit reached", account.CreatedAt)
@@ -3904,8 +3924,14 @@ func (h *Handler) apiRefreshAccount(w http.ResponseWriter, r *http.Request, id s
 		return
 	}
 
-	// 记录额度耗尽事件与时间戳
-	if !wasExhausted && nowExhausted {
+	// 从耗尽恢复：清零 ExhaustedTime
+	if wasExhausted && !nowExhausted && account.ExhaustedTime > 0 {
+		account.ExhaustedTime = 0
+		config.UpdateAccount(id, *account)
+	}
+
+	// 新耗尽：记录事件并设置 ExhaustedTime（避免重复记录）
+	if !wasExhausted && nowExhausted && account.ExhaustedTime == 0 {
 		account.ExhaustedTime = time.Now().Unix()
 		config.UpdateAccount(id, *account)
 		getObserveStore().RecordAccountEvent(id, account.Email, "exhausted", "Usage limit reached", account.CreatedAt)
