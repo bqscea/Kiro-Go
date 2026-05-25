@@ -2980,8 +2980,6 @@
             document.getElementById('openaiEndpoint').textContent = baseUrl + '/v1/chat/completions';
             document.getElementById('modelsEndpoint').textContent = baseUrl + '/v1/models';
             document.getElementById('statsEndpoint').textContent = baseUrl + '/v1/stats';
-            // 自动检查更新
-            setTimeout(() => checkUpdate(false), 2000);
         }
         async function loadStats() {
             const res = await fetch('/admin/api/status', { headers: { 'X-Admin-Password': password } });
