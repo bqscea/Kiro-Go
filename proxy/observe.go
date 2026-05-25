@@ -565,6 +565,10 @@ func (s *observeStore) Reset() {
 	s.modelStats = make(map[string]*modelStat)
 	s.recentErrors = make([]errorRecord, observeRecentErrs)
 	s.recentErrIdx = 0
+	s.recentRequests = make([]requestRecord, observeRecentReqs)
+	s.recentReqIdx = 0
+	s.accountEvents = make([]accountEventRecord, 100)
+	s.accountEventIdx = 0
 	s.startedAt = time.Now().Unix()
 }
 

@@ -1535,6 +1535,7 @@
                 <div class="card-header"><span class="card-title" data-i18n="settings.statistics"></span></div>
                 <button class="btn btn-danger" onclick="resetStats()" data-i18n="settings.resetStats"></button>
                 <button class="btn btn-danger" onclick="resetBanTime()" data-i18n="settings.resetBanTime" style="margin-left:8px"></button>
+                <button class="btn btn-danger" onclick="resetAccountEvents()" data-i18n="settings.resetAccountEvents" style="margin-left:8px"></button>
             </div>
         </div>
         <div id="tabApi" class="tab-content hidden">
@@ -1855,6 +1856,8 @@
                 'settings.confirmReset': '确定重置统计？',
                 'settings.resetBanTime': '清零今日封禁',
                 'settings.confirmResetBanTime': '确定清零今日封禁计数？',
+                'settings.resetAccountEvents': '清空账号事件',
+                'settings.confirmResetAccountEvents': '确定清空所有账号事件记录？',
                 'settings.proxySettings': '出站代理设置',
                 'settings.proxyType': '代理类型',
                 'settings.proxyNone': '直连（不使用代理）',
@@ -2398,6 +2401,8 @@
                 'settings.confirmReset': 'Confirm reset statistics?',
                 'settings.resetBanTime': 'Reset Today\'s Bans',
                 'settings.confirmResetBanTime': 'Confirm reset today\'s ban count?',
+                'settings.resetAccountEvents': 'Clear Account Events',
+                'settings.confirmResetAccountEvents': 'Confirm clear all account event records?',
                 'settings.proxySettings': 'Outbound Proxy Settings',
                 'settings.proxyType': 'Proxy Type',
                 'settings.proxyNone': 'Direct (no proxy)',
@@ -4495,6 +4500,11 @@
             if (!confirm(t('settings.confirmResetBanTime'))) return;
             await fetch('/admin/api/stats/reset', { method: 'POST', headers: { 'X-Admin-Password': password } });
             loadStats();
+        }
+        async function resetAccountEvents() {
+            if (!confirm(t('settings.confirmResetAccountEvents'))) return;
+            await fetch('/admin/api/stats/reset', { method: 'POST', headers: { 'X-Admin-Password': password } });
+            loadAccountEvents();
         }
         function switchTab(tab) {
             document.querySelectorAll('.tab').forEach(tabEl => tabEl.classList.toggle('active', tabEl.dataset.tab === tab));
