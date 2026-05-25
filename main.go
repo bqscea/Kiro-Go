@@ -22,6 +22,7 @@ import (
 	"kiro-go/proxy"
 	"log"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -74,6 +75,7 @@ func main() {
 	logger.Infof("Admin panel: http://%s/admin", addr)
 	logger.Infof("Claude API: http://%s/v1/messages", addr)
 	logger.Infof("OpenAI API: http://%s/v1/chat/completions", addr)
+	logger.Infof("pprof: http://%s/debug/pprof/", addr)
 
 	// 信号捕获
 	sigChan := make(chan os.Signal, 1)
