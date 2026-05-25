@@ -31,10 +31,16 @@ type Handler struct {
 	totalTokens     int64
 	totalCredits    float64 // float64 需要用锁保护
 	creditsMu       sync.RWMutex
-	startTime       int64
-	stopRefresh     chan struct{}
-	stopStatsSaver  chan struct{}
-	shutdownOnce    sync.Once
+	// 今日统计
+	todayRequests  int64
+	todayTokens    int64
+	todayCredits   float64
+	lastResetDate  string // YYYY-MM-DD
+	todayStatsMu   sync.RWMutex
+	startTime      int64
+	stopRefresh    chan struct{}
+	stopStatsSaver chan struct{}
+	shutdownOnce   sync.Once
 	// 模型缓存
 	cachedModels    []ModelInfo
 	modelsCacheMu   sync.RWMutex
@@ -339,8 +345,10 @@ func (h *Handler) refreshAllAccounts() {
 		config.UpdateAccountInfo(account.ID, *info)
 		logger.Infof("[BackgroundRefresh] Refreshed %s: %s %.1f/%.1f", account.Email, info.SubscriptionType, info.UsageCurrent, info.UsageLimit)
 
-		// 记录额度耗尽事件
+		// 记录额度耗尽事件与时间戳
 		if !wasExhausted && nowExhausted {
+			account.ExhaustedTime = time.Now().Unix()
+			config.UpdateAccount(account.ID, *account)
 			getObserveStore().RecordAccountEvent(account.ID, account.Email, "exhausted", "Usage limit reached")
 		}
 	}
@@ -778,53 +786,69 @@ func buildModelInfo(id, ownedBy string, supportsImage bool) map[string]interface
 	}
 }
 
-// refreshModelsCache 从 Kiro API 拉取模型列表并缓存
+// refreshModelsCache 从 Kiro API 拉取模型列表并缓存（并发刷新）
 func (h *Handler) refreshModelsCache() {
 	accounts := config.GetEnabledAccounts()
 	if len(accounts) == 0 {
 		return
 	}
 
+	const maxConcurrency = 10
+	sem := make(chan struct{}, maxConcurrency)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
 	aggregated := make([]ModelInfo, 0)
+
 	for i := range accounts {
 		account := &accounts[i]
-		if err := h.ensureValidToken(account); err != nil {
-			logger.Warnf("[ModelsCache] Skip %s token refresh failed: %v", account.Email, err)
-			continue
-		}
+		wg.Add(1)
+		go func(acc *config.Account) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
 
-		models, err := ListAvailableModels(account)
-		if err != nil {
-			logger.Warnf("[ModelsCache] Failed to refresh for %s: %v", account.Email, err)
-
-			// 检测 403 封禁状态，自动禁用账号
-			errMsg := err.Error()
-			if strings.Contains(errMsg, "403") && (strings.Contains(errMsg, "temporarily is suspended") || strings.Contains(errMsg, "temporarily suspended")) {
-				logger.Warnf("[ModelsCache] Account %s is suspended, auto-disabling", account.Email)
-
-				updatedAccount := *account
-				updatedAccount.Enabled = false
-				updatedAccount.BanStatus = "BANNED"
-				updatedAccount.BanReason = "Kiro temporarily suspended - security precaution"
-				updatedAccount.BanTime = time.Now().Unix()
-
-				if updateErr := config.UpdateAccount(account.ID, updatedAccount); updateErr != nil {
-					logger.Errorf("[ModelsCache] Failed to update account ban status: %v", updateErr)
-				}
-
-				// 记录封禁事件
-				getObserveStore().RecordAccountEvent(account.ID, account.Email, "banned", updatedAccount.BanReason)
+			if err := h.ensureValidToken(acc); err != nil {
+				logger.Warnf("[ModelsCache] Skip %s token refresh failed: %v", acc.Email, err)
+				return
 			}
-			continue
-		}
-		// 缓存每账号可用模型，用于路由时过滤
-		modelIDs := make([]string, 0, len(models))
-		for _, m := range models {
-			modelIDs = append(modelIDs, m.ModelId)
-		}
-		h.pool.SetModelList(account.ID, modelIDs)
-		aggregated = mergeUniqueModels(aggregated, models)
+
+			models, err := ListAvailableModels(acc)
+			if err != nil {
+				logger.Warnf("[ModelsCache] Failed to refresh for %s: %v", acc.Email, err)
+
+				// 检测 403 封禁状态，自动禁用账号
+				errMsg := err.Error()
+				if strings.Contains(errMsg, "403") && (strings.Contains(errMsg, "temporarily is suspended") || strings.Contains(errMsg, "temporarily suspended")) {
+					logger.Warnf("[ModelsCache] Account %s is suspended, auto-disabling", acc.Email)
+
+					updatedAccount := *acc
+					updatedAccount.Enabled = false
+					updatedAccount.BanStatus = "BANNED"
+					updatedAccount.BanReason = "Kiro temporarily suspended - security precaution"
+					updatedAccount.BanTime = time.Now().Unix()
+
+					if updateErr := config.UpdateAccount(acc.ID, updatedAccount); updateErr != nil {
+						logger.Errorf("[ModelsCache] Failed to update account ban status: %v", updateErr)
+					}
+
+					getObserveStore().RecordAccountEvent(acc.ID, acc.Email, "banned", updatedAccount.BanReason)
+				}
+				return
+			}
+
+			modelIDs := make([]string, 0, len(models))
+			for _, m := range models {
+				modelIDs = append(modelIDs, m.ModelId)
+			}
+			h.pool.SetModelList(acc.ID, modelIDs)
+
+			mu.Lock()
+			aggregated = mergeUniqueModels(aggregated, models)
+			mu.Unlock()
+		}(account)
 	}
+
+	wg.Wait()
 
 	if len(aggregated) > 0 {
 		h.modelsCacheMu.Lock()
@@ -3466,6 +3490,7 @@ func (h *Handler) apiGetStatus(w http.ResponseWriter, r *http.Request) {
 	totalBanned := 0
 	todayBanned := 0
 	totalExhausted := 0
+	todayExhausted := 0
 	availableAccounts := 0
 	todayStart := time.Now().Truncate(24 * time.Hour).Unix()
 
@@ -3481,6 +3506,9 @@ func (h *Handler) apiGetStatus(w http.ResponseWriter, r *http.Request) {
 		}
 		if !isBanned && isExhausted {
 			totalExhausted++
+			if a.ExhaustedTime >= todayStart {
+				todayExhausted++
+			}
 		}
 		if a.Enabled && !isBanned && !isExhausted {
 			availableAccounts++
@@ -3500,6 +3528,7 @@ func (h *Handler) apiGetStatus(w http.ResponseWriter, r *http.Request) {
 		"totalBanned":     totalBanned,
 		"todayBanned":     todayBanned,
 		"totalExhausted":  totalExhausted,
+		"todayExhausted":  todayExhausted,
 	})
 }
 
@@ -3778,8 +3807,10 @@ func (h *Handler) refreshAccountInfoAsync(accountID string) {
 	config.UpdateAccountInfo(accountID, *info)
 	logger.Infof("[RefreshAccountInfoAsync] Refreshed %s: %s %.1f/%.1f", account.Email, info.SubscriptionType, info.UsageCurrent, info.UsageLimit)
 
-	// 记录额度耗尽事件
+	// 记录额度耗尽事件与时间戳
 	if !wasExhausted && nowExhausted {
+		account.ExhaustedTime = time.Now().Unix()
+		config.UpdateAccount(accountID, *account)
 		getObserveStore().RecordAccountEvent(accountID, account.Email, "exhausted", "Usage limit reached")
 	}
 }
@@ -3864,8 +3895,10 @@ func (h *Handler) apiRefreshAccount(w http.ResponseWriter, r *http.Request, id s
 		return
 	}
 
-	// 记录额度耗尽事件
+	// 记录额度耗尽事件与时间戳
 	if !wasExhausted && nowExhausted {
+		account.ExhaustedTime = time.Now().Unix()
+		config.UpdateAccount(id, *account)
 		getObserveStore().RecordAccountEvent(id, account.Email, "exhausted", "Usage limit reached")
 	}
 
@@ -4679,4 +4712,14 @@ func (h *Handler) apiEventsStream(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 		}
 	}
+}
+
+// Shutdown 优雅关闭所有后台任务
+func (h *Handler) Shutdown() {
+	h.shutdownOnce.Do(func() {
+		logger.Infof("[Handler] Shutting down background tasks...")
+		close(h.stopRefresh)
+		close(h.stopStatsSaver)
+		logger.Infof("[Handler] Background tasks stopped")
+	})
 }

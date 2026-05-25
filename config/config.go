@@ -77,9 +77,10 @@ type Account struct {
 	SilentTime   int64  `json:"silentTime,omitempty"`   // Timestamp when silent mode was set
 	Standby      bool   `json:"standby,omitempty"`      // Standby mode: account is refreshed but not used for requests
 	StandbyTime  int64  `json:"standbyTime,omitempty"`  // Timestamp when standby mode was set
-	BanStatus    string `json:"banStatus,omitempty"`    // Ban status: "ACTIVE", "BANNED", "SUSPENDED"
-	BanReason    string `json:"banReason,omitempty"`    // Reason for ban/suspension
-	BanTime      int64  `json:"banTime,omitempty"`      // Timestamp when ban was detected
+	BanStatus     string `json:"banStatus,omitempty"`     // Ban status: "ACTIVE", "BANNED", "SUSPENDED"
+	BanReason     string `json:"banReason,omitempty"`     // Reason for ban/suspension
+	BanTime       int64  `json:"banTime,omitempty"`       // Timestamp when ban was detected
+	ExhaustedTime int64  `json:"exhaustedTime,omitempty"` // Timestamp when usage limit was exhausted
 
 	// Subscription information
 	SubscriptionType  string `json:"subscriptionType,omitempty"`  // Tier: FREE, PRO, PRO_PLUS, or POWER
@@ -256,6 +257,12 @@ type Config struct {
 	FailedRequests  int     `json:"failedRequests,omitempty"`  // Failed requests count
 	TotalTokens     int     `json:"totalTokens,omitempty"`     // Total tokens processed
 	TotalCredits    float64 `json:"totalCredits,omitempty"`    // Total credits consumed
+
+	// Today's statistics (reset daily at midnight)
+	TodayRequests int     `json:"todayRequests,omitempty"` // Today's request count
+	TodayTokens   int     `json:"todayTokens,omitempty"`   // Today's token count
+	TodayCredits  float64 `json:"todayCredits,omitempty"`  // Today's credits consumed
+	LastResetDate string  `json:"lastResetDate,omitempty"` // Last reset date (YYYY-MM-DD)
 
 	// Backup configuration
 	Backup BackupConfig `json:"backup,omitempty"`
@@ -798,6 +805,24 @@ func GetStats() (int, int, int, int, float64) {
 	cfgLock.RLock()
 	defer cfgLock.RUnlock()
 	return cfg.TotalRequests, cfg.SuccessRequests, cfg.FailedRequests, cfg.TotalTokens, cfg.TotalCredits
+}
+
+// GetTodayStats 获取今日统计
+func GetTodayStats() (int, int, float64, string) {
+	cfgLock.RLock()
+	defer cfgLock.RUnlock()
+	return cfg.TodayRequests, cfg.TodayTokens, cfg.TodayCredits, cfg.LastResetDate
+}
+
+// UpdateTodayStats 更新今日统计
+func UpdateTodayStats(todayReq, todayTokens int, todayCredits float64, lastResetDate string) error {
+	cfgLock.Lock()
+	defer cfgLock.Unlock()
+	cfg.TodayRequests = todayReq
+	cfg.TodayTokens = todayTokens
+	cfg.TodayCredits = todayCredits
+	cfg.LastResetDate = lastResetDate
+	return Save()
 }
 
 func UpdateAccountStats(id string, requestCount, errorCount, totalTokens int, totalCredits float64, lastUsed int64) error {

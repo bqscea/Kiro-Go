@@ -38,10 +38,18 @@ func (h *Handler) resetAllBanTime() {
 	resetCount := 0
 
 	for i := range accounts {
+		needsUpdate := false
 		if accounts[i].BanTime > 0 {
 			accounts[i].BanTime = 0
+			needsUpdate = true
+		}
+		if accounts[i].ExhaustedTime > 0 {
+			accounts[i].ExhaustedTime = 0
+			needsUpdate = true
+		}
+		if needsUpdate {
 			if err := config.UpdateAccount(accounts[i].ID, accounts[i]); err != nil {
-				logger.Warnf("[BanTime] Reset failed for account %s: %v", accounts[i].ID, err)
+				logger.Warnf("[DailyReset] Reset failed for account %s: %v", accounts[i].ID, err)
 			} else {
 				resetCount++
 			}
@@ -49,7 +57,7 @@ func (h *Handler) resetAllBanTime() {
 	}
 
 	if resetCount > 0 {
-		logger.Infof("[BanTime] Daily reset completed: %d accounts cleared", resetCount)
-		getBroadcaster().Publish(Event{Type: "bantime_reset", Payload: ""})
+		logger.Infof("[DailyReset] Daily reset completed: %d accounts cleared", resetCount)
+		getBroadcaster().Publish(Event{Type: "daily_reset", Payload: ""})
 	}
 }
