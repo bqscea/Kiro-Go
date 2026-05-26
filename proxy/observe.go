@@ -277,20 +277,24 @@ func (s *observeStore) RecordRequest(accountID, email, model string, inTokens, o
 
 // OverviewSnapshot 全局总览（最近 1 分钟与最近 5 分钟均值）
 type OverviewSnapshot struct {
-	StartedAt    int64   `json:"startedAt"`
-	NowUnix      int64   `json:"nowUnix"`
-	RPM1         int     `json:"rpm1"`         // 最近 1min 请求数
-	RPM5Avg      float64 `json:"rpm5Avg"`      // 最近 5min 平均
-	ErrRate5     float64 `json:"errRate5"`     // 最近 5min 错误率 (0-1)
-	InTPM5       float64 `json:"inTpm5"`       // 5min 入 tokens / min
-	OutTPM5      float64 `json:"outTpm5"`      // 5min 出 tokens / min
-	Credits5     float64 `json:"credits5"`     // 5min credits 之和
-	Credits60    float64 `json:"credits60"`    // 60min credits 之和
-	Errors60     int     `json:"errors60"`     // 最近 60min 失败数
-	Successes60  int     `json:"successes60"`  // 最近 60min 成功数
-	ActiveAccts  int     `json:"activeAccts"`  // 最近 5min 有流量的账号数
-	TotalAccts   int     `json:"totalAccts"`   // 累计被记录过的账号数
-	TotalModels  int     `json:"totalModels"`  // 累计模型数
+	StartedAt       int64   `json:"startedAt"`
+	NowUnix         int64   `json:"nowUnix"`
+	RPM1            int     `json:"rpm1"`            // 最近 1min 请求数
+	RPM5Avg         float64 `json:"rpm5Avg"`         // 最近 5min 平均
+	ErrRate5        float64 `json:"errRate5"`        // 最近 5min 错误率 (0-1)
+	InTPM5          float64 `json:"inTpm5"`          // 5min 入 tokens / min
+	OutTPM5         float64 `json:"outTpm5"`         // 5min 出 tokens / min
+	Credits5        float64 `json:"credits5"`        // 5min credits 之和
+	Credits60       float64 `json:"credits60"`       // 60min credits 之和
+	Errors60        int     `json:"errors60"`        // 最近 60min 失败数
+	Successes60     int     `json:"successes60"`     // 最近 60min 成功数
+	ActiveAccts     int     `json:"activeAccts"`     // 最近 5min 有流量的账号数
+	TotalAccts      int     `json:"totalAccts"`      // 累计被记录过的账号数
+	TotalModels     int     `json:"totalModels"`     // 累计模型数
+	TotalBanned     int     `json:"totalBanned"`     // 总封禁账号数
+	TodayBanned     int     `json:"todayBanned"`     // 今日封禁账号数
+	TotalExhausted  int     `json:"totalExhausted"`  // 总耗尽账号数
+	TodayExhausted  int     `json:"todayExhausted"`  // 今日耗尽账号数
 }
 
 func (s *observeStore) Overview() OverviewSnapshot {
@@ -344,21 +348,48 @@ func (s *observeStore) Overview() OverviewSnapshot {
 		errRate = float64(errs5) / float64(total)
 	}
 
+	// 统计账号事件（封禁、耗尽）
+	var totalBanned, todayBanned, totalExhausted, todayExhausted int
+	todayStart := time.Now().Truncate(24 * time.Hour).Unix()
+	for i := 0; i < len(s.accountEvents); i++ {
+		idx := (s.accountEventIdx - 1 - i + len(s.accountEvents)) % len(s.accountEvents)
+		rec := s.accountEvents[idx]
+		if rec.TS == 0 {
+			continue
+		}
+		switch rec.EventType {
+		case "banned":
+			totalBanned++
+			if rec.TS >= todayStart {
+				todayBanned++
+			}
+		case "exhausted":
+			totalExhausted++
+			if rec.TS >= todayStart {
+				todayExhausted++
+			}
+		}
+	}
+
 	return OverviewSnapshot{
-		StartedAt:   s.startedAt,
-		NowUnix:     now,
-		RPM1:        rpm1,
-		RPM5Avg:     float64(rpm5Total) / 5.0,
-		ErrRate5:    errRate,
-		InTPM5:      inTok5 / 5.0,
-		OutTPM5:     outTok5 / 5.0,
-		Credits5:    credits5,
-		Credits60:   credits60,
-		Errors60:    errs60,
-		Successes60: succ60,
-		ActiveAccts: activeAccts,
-		TotalAccts:  len(s.accountRings),
-		TotalModels: len(s.modelStats),
+		StartedAt:      s.startedAt,
+		NowUnix:        now,
+		RPM1:           rpm1,
+		RPM5Avg:        float64(rpm5Total) / 5.0,
+		ErrRate5:       errRate,
+		InTPM5:         inTok5 / 5.0,
+		OutTPM5:        outTok5 / 5.0,
+		Credits5:       credits5,
+		Credits60:      credits60,
+		Errors60:       errs60,
+		Successes60:    succ60,
+		ActiveAccts:    activeAccts,
+		TotalAccts:     len(s.accountRings),
+		TotalModels:    len(s.modelStats),
+		TotalBanned:    totalBanned,
+		TodayBanned:    todayBanned,
+		TotalExhausted: totalExhausted,
+		TodayExhausted: todayExhausted,
 	}
 }
 
