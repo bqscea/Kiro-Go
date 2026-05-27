@@ -678,6 +678,7 @@ func (p *AccountPool) AvailableCount() int {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	now := time.Now()
+	allowOverUsage := config.GetAllowOverUsage()
 	count := 0
 	seen := make(map[string]bool)
 	for _, acc := range p.accounts {
@@ -686,6 +687,12 @@ func (p *AccountPool) AvailableCount() int {
 		}
 		seen[acc.ID] = true
 		if cooldown, ok := p.cooldowns[acc.ID]; ok && now.Before(cooldown) {
+			continue
+		}
+		if acc.ExpiresAt > 0 && now.Unix() > acc.ExpiresAt-config.TokenRefreshSkewSeconds {
+			continue
+		}
+		if isOverUsageLimit(acc) && !acc.AllowOverage && !allowOverUsage {
 			continue
 		}
 		count++

@@ -19,6 +19,35 @@ import (
 	"github.com/google/uuid"
 )
 
+var rawRefreshTokenFunc = auth.RefreshToken
+var tokenRefreshCalls sync.Map
+
+type tokenRefreshCall struct {
+	done         chan struct{}
+	accessToken  string
+	refreshToken string
+	expiresAt    int64
+	profileArn   string
+	err          error
+}
+
+func refreshTokenFunc(account *config.Account) (string, string, int64, string, error) {
+	if account == nil || account.ID == "" {
+		return rawRefreshTokenFunc(account)
+	}
+	call := &tokenRefreshCall{done: make(chan struct{})}
+	actual, loaded := tokenRefreshCalls.LoadOrStore(account.ID, call)
+	if loaded {
+		shared := actual.(*tokenRefreshCall)
+		<-shared.done
+		return shared.accessToken, shared.refreshToken, shared.expiresAt, shared.profileArn, shared.err
+	}
+	call.accessToken, call.refreshToken, call.expiresAt, call.profileArn, call.err = rawRefreshTokenFunc(account)
+	close(call.done)
+	tokenRefreshCalls.Delete(account.ID)
+	return call.accessToken, call.refreshToken, call.expiresAt, call.profileArn, call.err
+}
+
 // Handler HTTP 处理器
 type Handler struct {
 	pool *pool.AccountPool
@@ -40,11 +69,12 @@ type Handler struct {
 	stopStatsSaver chan struct{}
 	shutdownOnce   sync.Once
 	// 模型缓存
-	cachedModels    []ModelInfo
-	modelsCacheMu   sync.RWMutex
-	modelsCacheTime int64
-	promptCache     *promptCacheTracker
-	tokenRefreshMu  sync.Mutex
+	cachedModels      []ModelInfo
+	modelsCacheMu     sync.RWMutex
+	modelsCacheTime   int64
+	promptCache       *promptCacheTracker
+	tokenRefreshMu    sync.Mutex
+	tokenRefreshLocks sync.Map
 }
 
 type thinkingStreamSource int
@@ -303,24 +333,13 @@ func (h *Handler) refreshAllAccounts() {
 			time.Sleep(delay)
 		}
 
-		// 检查 token 是否需要刷新
-		if account.ExpiresAt > 0 && time.Now().Unix() > account.ExpiresAt-config.TokenRefreshSkewSeconds {
-			newAccessToken, newRefreshToken, newExpiresAt, profileArn, err := auth.RefreshToken(account)
-			if err != nil {
-				logger.Warnf("[BackgroundRefresh] Token refresh failed for %s: %v", account.Email, err)
-				// 不跳过，继续尝试刷新账户信息（可能会失败，但至少尝试）
-			} else {
-				account.AccessToken = newAccessToken
-				if newRefreshToken != "" {
-					account.RefreshToken = newRefreshToken
-				}
-				account.ExpiresAt = newExpiresAt
-				config.UpdateAccountToken(account.ID, newAccessToken, newRefreshToken, newExpiresAt)
-				h.pool.UpdateToken(account.ID, newAccessToken, newRefreshToken, newExpiresAt)
-				if profileArn != "" {
-					account.ProfileArn = profileArn
-					config.UpdateAccountProfileArn(account.ID, profileArn)
-				}
+		if err := h.refreshAccountToken(account, false); err != nil {
+			logger.Warnf("[BackgroundRefresh] Token refresh failed for %s: %v", account.Email, err)
+		}
+
+		if strings.TrimSpace(account.ProfileArn) == "" {
+			if err := warmAccountProfileArn(account); err != nil {
+				logger.Debugf("[ProfileArn] Warm-up skipped for %s: %v", account.Email, err)
 			}
 		}
 
@@ -1655,13 +1674,34 @@ func (h *Handler) recordFailure() {
 	atomic.AddInt64(&h.failedRequests, 1)
 }
 
-// checkOverageError 检测 402 超额错误，自动关闭对应账号的超额使用
-func (h *Handler) checkOverageError(err error, accountID string) {
+type upstreamErrorClassification struct {
+	Quota     bool
+	Suspended bool
+	Overage   bool
+}
+
+func classifyUpstreamError(err error) upstreamErrorClassification {
 	if err == nil {
-		return
+		return upstreamErrorClassification{}
 	}
 	errMsg := err.Error()
-	if strings.Contains(errMsg, "402") && strings.Contains(errMsg, "OVERAGE") {
+	lower := strings.ToLower(errMsg)
+	return upstreamErrorClassification{
+		Quota: strings.Contains(errMsg, "429") ||
+			strings.Contains(errMsg, "402") ||
+			strings.Contains(lower, "quota") ||
+			strings.Contains(lower, "reached the limit") ||
+			strings.Contains(errMsg, "MONTHLY_REQUEST_COUNT") ||
+			strings.Contains(errMsg, "DAILY_REQUEST_COUNT"),
+		Suspended: strings.Contains(lower, "temporarily is suspended") ||
+			strings.Contains(lower, "temporarily suspended"),
+		Overage: strings.Contains(errMsg, "402") && strings.Contains(errMsg, "OVERAGE"),
+	}
+}
+
+// checkOverageError 检测 402 超额错误，自动关闭对应账号的超额使用
+func (h *Handler) checkOverageError(err error, accountID string) {
+	if classifyUpstreamError(err).Overage {
 		logger.Warnf("[Overage] Detected overage limit error for account %s, disabling AllowOverage", accountID)
 		config.DisableAccountOverage(accountID)
 	}
@@ -1697,12 +1737,7 @@ func (h *Handler) setAccountSilent(accountID, reason string) {
 }
 
 func shouldAutoSilentError(err error) bool {
-	if err == nil {
-		return false
-	}
-	errMsg := strings.ToLower(err.Error())
-	return strings.Contains(errMsg, "temporarily is suspended") ||
-		strings.Contains(errMsg, "temporarily suspended")
+	return classifyUpstreamError(err).Suspended
 }
 
 func (h *Handler) autoSilentIfSuspended(accountID string, err error) {
@@ -2306,8 +2341,8 @@ func (h *Handler) handleOpenAINonStream(w http.ResponseWriter, r *http.Request, 
 		},
 		OnToolUse:  func(tu KiroToolUse) { toolUses = append(toolUses, tu) },
 		OnComplete: func(inTok, outTok int) { inputTokens = inTok; outputTokens = outTok },
-		OnError: func(err error) {},
-		OnCredits: func(c float64) { credits = c },
+		OnError:    func(err error) {},
+		OnCredits:  func(c float64) { credits = c },
 		OnContextUsage: func(pct float64) {
 			realInputTokens = int(pct * float64(getContextWindowSize(model)) / 100.0)
 		},
@@ -2371,26 +2406,25 @@ func (h *Handler) sendOpenAIError(w http.ResponseWriter, status int, errType, me
 
 // isQuotaError 检测配额耗尽错误
 func isQuotaError(err error) bool {
-	if err == nil {
-		return false
-	}
-	errMsg := err.Error()
-	return strings.Contains(errMsg, "429") ||
-		strings.Contains(errMsg, "402") ||
-		strings.Contains(errMsg, "quota") ||
-		strings.Contains(errMsg, "reached the limit") ||
-		strings.Contains(errMsg, "MONTHLY_REQUEST_COUNT") ||
-		strings.Contains(errMsg, "DAILY_REQUEST_COUNT")
+	return classifyUpstreamError(err).Quota
 }
 
 // ensureValidToken 确保 token 有效
 func (h *Handler) ensureValidToken(account *config.Account) error {
-	if account.ExpiresAt == 0 || time.Now().Unix() < account.ExpiresAt-config.TokenRefreshSkewSeconds {
+	return h.refreshAccountToken(account, false)
+}
+
+func (h *Handler) refreshAccountToken(account *config.Account, force bool) error {
+	if account == nil || account.RefreshToken == "" {
+		return nil
+	}
+	if !force && (account.ExpiresAt == 0 || time.Now().Unix() < account.ExpiresAt-config.TokenRefreshSkewSeconds) {
 		return nil
 	}
 
-	h.tokenRefreshMu.Lock()
-	defer h.tokenRefreshMu.Unlock()
+	lock := h.tokenRefreshLock(account.ID)
+	lock.Lock()
+	defer lock.Unlock()
 
 	// Another concurrent request may have refreshed this account while we waited.
 	if latest := h.pool.GetByID(account.ID); latest != nil {
@@ -2398,18 +2432,17 @@ func (h *Handler) ensureValidToken(account *config.Account) error {
 		account.RefreshToken = latest.RefreshToken
 		account.ExpiresAt = latest.ExpiresAt
 		account.ProfileArn = latest.ProfileArn
-		if account.ExpiresAt == 0 || time.Now().Unix() < account.ExpiresAt-config.TokenRefreshSkewSeconds {
+		if !force && (account.ExpiresAt == 0 || time.Now().Unix() < account.ExpiresAt-config.TokenRefreshSkewSeconds) {
 			return nil
 		}
 	}
 
-	accessToken, refreshToken, expiresAt, profileArn, err := auth.RefreshToken(account)
+	accessToken, refreshToken, expiresAt, profileArn, err := refreshTokenFunc(account)
 	if err != nil {
 		h.autoSilentIfSuspended(account.ID, err)
 		return err
 	}
 
-	// 更新内存
 	h.pool.UpdateToken(account.ID, accessToken, refreshToken, expiresAt)
 	account.AccessToken = accessToken
 	if refreshToken != "" {
@@ -2421,10 +2454,19 @@ func (h *Handler) ensureValidToken(account *config.Account) error {
 		config.UpdateAccountProfileArn(account.ID, profileArn)
 	}
 
-	// 持久化
 	config.UpdateAccountToken(account.ID, accessToken, refreshToken, expiresAt)
-
 	return nil
+}
+
+func (h *Handler) tokenRefreshLock(accountID string) *sync.Mutex {
+	if accountID == "" {
+		return &h.tokenRefreshMu
+	}
+	if lock, ok := h.tokenRefreshLocks.Load(accountID); ok {
+		return lock.(*sync.Mutex)
+	}
+	actual, _ := h.tokenRefreshLocks.LoadOrStore(accountID, &sync.Mutex{})
+	return actual.(*sync.Mutex)
 }
 
 // ==================== 管理 API ====================
@@ -3017,7 +3059,7 @@ func (h *Handler) apiBatchAccounts(w http.ResponseWriter, r *http.Request) {
 			}
 			// 刷新 token
 			if account.RefreshToken != "" {
-				if newAccess, newRefresh, newExpires, profileArn, err := auth.RefreshToken(account); err == nil {
+				if newAccess, newRefresh, newExpires, profileArn, err := refreshTokenFunc(account); err == nil {
 					account.AccessToken = newAccess
 					if newRefresh != "" {
 						account.RefreshToken = newRefresh
@@ -3557,12 +3599,12 @@ func (h *Handler) apiGetStatus(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) apiGetSettings(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"apiKey":              config.GetApiKey(),
-		"requireApiKey":       config.IsApiKeyRequired(),
-		"port":                config.GetPort(),
-		"host":                config.GetHost(),
-		"allowOverUsage":      config.GetAllowOverUsage(),
-		"loadBalancingMode":   config.GetLoadBalancingMode(),
+		"apiKey":            config.GetApiKey(),
+		"requireApiKey":     config.IsApiKeyRequired(),
+		"port":              config.GetPort(),
+		"host":              config.GetHost(),
+		"allowOverUsage":    config.GetAllowOverUsage(),
+		"loadBalancingMode": config.GetLoadBalancingMode(),
 	})
 }
 
@@ -3611,11 +3653,11 @@ func (h *Handler) apiUpdatePromptFilter(w http.ResponseWriter, r *http.Request) 
 
 func (h *Handler) apiUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		ApiKey             *string `json:"apiKey,omitempty"`
-		RequireApiKey      *bool   `json:"requireApiKey,omitempty"`
-		Password           string  `json:"password,omitempty"`
-		AllowOverUsage     *bool  `json:"allowOverUsage,omitempty"`
-		LoadBalancingMode  string `json:"loadBalancingMode,omitempty"`
+		ApiKey            *string `json:"apiKey,omitempty"`
+		RequireApiKey     *bool   `json:"requireApiKey,omitempty"`
+		Password          string  `json:"password,omitempty"`
+		AllowOverUsage    *bool   `json:"allowOverUsage,omitempty"`
+		LoadBalancingMode string  `json:"loadBalancingMode,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.WriteHeader(400)
@@ -3805,7 +3847,7 @@ func (h *Handler) refreshAccountInfoAsync(accountID string) {
 	// 刷新 token（如需）
 	if account.ExpiresAt > 0 && time.Now().Unix() > account.ExpiresAt-config.TokenRefreshSkewSeconds {
 		if account.RefreshToken != "" {
-			newAccessToken, newRefreshToken, newExpiresAt, profileArn, err := auth.RefreshToken(account)
+			newAccessToken, newRefreshToken, newExpiresAt, profileArn, err := refreshTokenFunc(account)
 			if err == nil {
 				account.AccessToken = newAccessToken
 				if newRefreshToken != "" {
@@ -3872,7 +3914,7 @@ func (h *Handler) apiRefreshAccount(w http.ResponseWriter, r *http.Request, id s
 		if account.RefreshToken == "" {
 			return nil
 		}
-		newAccessToken, newRefreshToken, newExpiresAt, profileArn, err := auth.RefreshToken(account)
+		newAccessToken, newRefreshToken, newExpiresAt, profileArn, err := refreshTokenFunc(account)
 		if err != nil {
 			return err
 		}

@@ -120,18 +120,29 @@ func ResolveProfileArn(account *config.Account) (string, error) {
 	if profileArn := strings.TrimSpace(account.ProfileArn); profileArn != "" {
 		return profileArn, nil
 	}
+	if err := warmAccountProfileArn(account); err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(account.ProfileArn), nil
+}
 
-	// Try ListAvailableProfiles first
+func warmAccountProfileArn(account *config.Account) error {
+	if account == nil {
+		return fmt.Errorf("account is nil")
+	}
+	if strings.TrimSpace(account.ProfileArn) != "" {
+		return nil
+	}
+
 	profileArn, err := listAvailableProfiles(account)
 	if err == nil && profileArn != "" {
 		if updateErr := config.UpdateAccountProfileArn(account.ID, profileArn); updateErr != nil {
 			logger.Warnf("[ProfileArn] Failed to cache profile ARN for %s: %v", account.Email, updateErr)
 		}
 		account.ProfileArn = profileArn
-		return profileArn, nil
+		return nil
 	}
 
-	// Fallback: refresh token to get profileArn from auth response
 	if account.RefreshToken != "" {
 		_, _, _, refreshedArn, refreshErr := auth.RefreshToken(account)
 		if refreshErr == nil && refreshedArn != "" {
@@ -139,11 +150,11 @@ func ResolveProfileArn(account *config.Account) (string, error) {
 				logger.Warnf("[ProfileArn] Failed to cache profile ARN for %s: %v", account.Email, updateErr)
 			}
 			account.ProfileArn = refreshedArn
-			return refreshedArn, nil
+			return nil
 		}
 	}
 
-	return "", fmt.Errorf("no available Kiro profile")
+	return fmt.Errorf("no available Kiro profile")
 }
 
 func listAvailableProfiles(account *config.Account) (string, error) {

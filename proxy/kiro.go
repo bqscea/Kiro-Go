@@ -26,6 +26,7 @@ type kiroEndpoint struct {
 	Origin    string
 	AmzTarget string
 	Name      string
+	Host      string
 }
 
 // BuildKiroEndpoints constructs endpoint list for the given region.
@@ -34,24 +35,29 @@ func BuildKiroEndpoints(region string) []kiroEndpoint {
 	if region == "" {
 		region = "us-east-1"
 	}
+	qHost := fmt.Sprintf("q.%s.amazonaws.com", region)
+	codeWhispererHost := fmt.Sprintf("codewhisperer.%s.amazonaws.com", region)
 	return []kiroEndpoint{
 		{
-			URL:       fmt.Sprintf("https://q.%s.amazonaws.com/generateAssistantResponse", region),
+			URL:       "https://" + qHost + "/generateAssistantResponse",
 			Origin:    "AI_EDITOR",
 			AmzTarget: "",
 			Name:      "Kiro IDE",
+			Host:      qHost,
 		},
 		{
-			URL:       fmt.Sprintf("https://codewhisperer.%s.amazonaws.com/generateAssistantResponse", region),
+			URL:       "https://" + codeWhispererHost + "/generateAssistantResponse",
 			Origin:    "AI_EDITOR",
 			AmzTarget: "AmazonCodeWhispererStreamingService.GenerateAssistantResponse",
 			Name:      "CodeWhisperer",
+			Host:      codeWhispererHost,
 		},
 		{
-			URL:       fmt.Sprintf("https://q.%s.amazonaws.com/generateAssistantResponse", region),
+			URL:       "https://" + qHost + "/generateAssistantResponse",
 			Origin:    "AI_EDITOR",
 			AmzTarget: "AmazonQDeveloperStreamingService.SendMessage",
 			Name:      "AmazonQ",
+			Host:      qHost,
 		},
 	}
 }
@@ -135,7 +141,7 @@ func buildKiroTransport(proxyURL string) *http.Transport {
 		DisableCompression:    false,
 		ForceAttemptHTTP2:     true,
 		// 连接复用优化
-		DisableKeepAlives: false,
+		DisableKeepAlives:      false,
 		MaxResponseHeaderBytes: 10 << 20, // 10MB
 	}
 	if proxyURL != "" {
@@ -303,14 +309,12 @@ func getSortedEndpoints(account *config.Account, preferred string) []kiroEndpoin
 
 // CallKiroAPI calls the Kiro streaming API, trying each configured endpoint with automatic fallback.
 func CallKiroAPI(account *config.Account, payload *KiroPayload, callback *KiroStreamCallback) error {
-	if _, err := json.Marshal(payload); err != nil {
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
 		return err
 	}
 
-	// Debug: dump full payload for troubleshooting upstream rejections
-	if payloadJSON, err := json.Marshal(payload); err == nil {
-		logger.Debugf("[KiroAPI] Request payload: %s", string(payloadJSON))
-	}
+	logger.Debugf("[KiroAPI] Request payload: %s", string(payloadJSON))
 
 	// Wrap OnToolUse to restore original tool names for the client.
 	if callback != nil && callback.OnToolUse != nil && len(payload.ToolNameMap) > 0 {
@@ -326,15 +330,15 @@ func CallKiroAPI(account *config.Account, payload *KiroPayload, callback *KiroSt
 		callback = &wrapped
 	}
 
-	if payload != nil && strings.TrimSpace(payload.ProfileArn) == "" {
-		if profileArn, err := ResolveProfileArn(account); err == nil {
-			payload.ProfileArn = profileArn
-		} else {
-			accountEmail := "<nil>"
-			if account != nil {
-				accountEmail = account.Email
-			}
-			logger.Warnf("[ProfileArn] Failed to resolve profile ARN for %s: %v", accountEmail, err)
+	if payload != nil && strings.TrimSpace(payload.ProfileArn) == "" && account != nil {
+		profileArn, err := ResolveProfileArn(account)
+		if err != nil {
+			return err
+		}
+		payload.ProfileArn = profileArn
+		payloadJSON, err = json.Marshal(payload)
+		if err != nil {
+			return err
 		}
 	}
 
@@ -344,20 +348,21 @@ func CallKiroAPI(account *config.Account, payload *KiroPayload, callback *KiroSt
 	var lastErr error
 	for _, ep := range endpoints {
 		// Update the origin field for the selected endpoint.
-		payload.ConversationState.CurrentMessage.UserInputMessage.Origin = ep.Origin
+		if payload.ConversationState.CurrentMessage.UserInputMessage.Origin != ep.Origin {
+			payload.ConversationState.CurrentMessage.UserInputMessage.Origin = ep.Origin
+			payloadJSON, err = json.Marshal(payload)
+			if err != nil {
+				return err
+			}
+		}
 
-		reqBody, _ := json.Marshal(payload)
-		req, err := http.NewRequest("POST", ep.URL, bytes.NewReader(reqBody))
+		req, err := http.NewRequest("POST", ep.URL, bytes.NewReader(payloadJSON))
 		if err != nil {
 			lastErr = err
 			continue
 		}
 
-		host := ""
-		if parsedURL, parseErr := url.Parse(ep.URL); parseErr == nil {
-			host = parsedURL.Host
-		}
-		headerValues := buildStreamingHeaderValues(account, host)
+		headerValues := buildStreamingHeaderValues(account, ep.Host)
 
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Accept", "*/*")
