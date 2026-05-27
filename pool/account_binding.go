@@ -101,7 +101,7 @@ func (p *AccountPool) tryGetBoundAccount(accountID, clientIP string) *config.Acc
 		if cooldown, ok := p.cooldowns[acc.ID]; ok && now.Before(cooldown) {
 			return nil
 		}
-		if acc.ExpiresAt > 0 && time.Now().Unix() > acc.ExpiresAt-tokenRefreshSkewSeconds {
+		if acc.ExpiresAt > 0 && time.Now().Unix() > acc.ExpiresAt-config.TokenRefreshSkewSeconds {
 			return nil
 		}
 		if isOverUsageLimit(*acc) && !acc.AllowOverage && !allowOverUsage {
@@ -145,7 +145,7 @@ func (p *AccountPool) tryGetBoundAccountForModel(accountID, model, clientIP stri
 		if cooldown, ok := p.cooldowns[acc.ID]; ok && now.Before(cooldown) {
 			return nil
 		}
-		if acc.ExpiresAt > 0 && time.Now().Unix() > acc.ExpiresAt-tokenRefreshSkewSeconds {
+		if acc.ExpiresAt > 0 && time.Now().Unix() > acc.ExpiresAt-config.TokenRefreshSkewSeconds {
 			return nil
 		}
 		if isOverUsageLimit(*acc) && !acc.AllowOverage && !allowOverUsage {
@@ -199,7 +199,7 @@ func (p *AccountPool) tryGetBoundAccountForModelAndGroups(accountID, model strin
 		if cooldown, ok := p.cooldowns[acc.ID]; ok && now.Before(cooldown) {
 			return nil
 		}
-		if acc.ExpiresAt > 0 && time.Now().Unix() > acc.ExpiresAt-tokenRefreshSkewSeconds {
+		if acc.ExpiresAt > 0 && time.Now().Unix() > acc.ExpiresAt-config.TokenRefreshSkewSeconds {
 			return nil
 		}
 		if isOverUsageLimit(*acc) && !acc.AllowOverage && !allowOverUsage {

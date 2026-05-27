@@ -292,6 +292,10 @@ type AccountInfo struct {
 	TrialExpiresAt    int64
 }
 
+// TokenRefreshSkewSeconds is the number of seconds before token expiration
+// to proactively refresh the token. Unified constant used across packages.
+const TokenRefreshSkewSeconds int64 = 300 // 5 minutes
+
 // Version current version
 const Version = "1.0.8"
 

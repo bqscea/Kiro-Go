@@ -13,7 +13,6 @@ import (
 )
 
 const overageFrequencyScale = 10
-const tokenRefreshSkewSeconds int64 = 120
 
 // 账号预占锁时长（防止并发请求选中同一账号）
 const accountReservationDuration = 5 * time.Second
@@ -140,7 +139,7 @@ func (p *AccountPool) getNextPriority() *config.Account {
 		}
 
 		// 跳过即将过期的 Token
-		if acc.ExpiresAt > 0 && time.Now().Unix() > acc.ExpiresAt-tokenRefreshSkewSeconds {
+		if acc.ExpiresAt > 0 && time.Now().Unix() > acc.ExpiresAt-config.TokenRefreshSkewSeconds {
 			continue
 		}
 
@@ -211,7 +210,7 @@ func (p *AccountPool) getNextBalanced() *config.Account {
 		}
 
 		// 跳过即将过期的 Token
-		if acc.ExpiresAt > 0 && time.Now().Unix() > acc.ExpiresAt-tokenRefreshSkewSeconds {
+		if acc.ExpiresAt > 0 && time.Now().Unix() > acc.ExpiresAt-config.TokenRefreshSkewSeconds {
 			seen[acc.ID] = true
 			continue
 		}
@@ -367,7 +366,7 @@ func (p *AccountPool) GetNextForModel(model string, clientIP string) *config.Acc
 			seen[acc.ID] = true
 			continue
 		}
-		if acc.ExpiresAt > 0 && time.Now().Unix() > acc.ExpiresAt-tokenRefreshSkewSeconds {
+		if acc.ExpiresAt > 0 && time.Now().Unix() > acc.ExpiresAt-config.TokenRefreshSkewSeconds {
 			seen[acc.ID] = true
 			continue
 		}
@@ -443,7 +442,7 @@ func (p *AccountPool) getNextPriorityForModel(model string) *config.Account {
 		if cooldown, ok := p.cooldowns[acc.ID]; ok && now.Before(cooldown) {
 			continue
 		}
-		if acc.ExpiresAt > 0 && time.Now().Unix() > acc.ExpiresAt-tokenRefreshSkewSeconds {
+		if acc.ExpiresAt > 0 && time.Now().Unix() > acc.ExpiresAt-config.TokenRefreshSkewSeconds {
 			continue
 		}
 		if isOverUsageLimit(acc) && !acc.AllowOverage && !allowOverUsage {
@@ -512,7 +511,7 @@ func (p *AccountPool) getNextPriorityForModelAndGroups(model string, allowedGrou
 		if cooldown, ok := p.cooldowns[acc.ID]; ok && now.Before(cooldown) {
 			continue
 		}
-		if acc.ExpiresAt > 0 && time.Now().Unix() > acc.ExpiresAt-tokenRefreshSkewSeconds {
+		if acc.ExpiresAt > 0 && time.Now().Unix() > acc.ExpiresAt-config.TokenRefreshSkewSeconds {
 			continue
 		}
 		if isOverUsageLimit(acc) && !acc.AllowOverage && !allowOverUsage {
@@ -788,7 +787,7 @@ func (p *AccountPool) GroupStats() []GroupStat {
 				b.cooldown++
 				continue
 			}
-			if a.ExpiresAt > 0 && now.Unix() > a.ExpiresAt-tokenRefreshSkewSeconds {
+			if a.ExpiresAt > 0 && now.Unix() > a.ExpiresAt-config.TokenRefreshSkewSeconds {
 				b.cooldown++
 				continue
 			}
@@ -942,7 +941,7 @@ func (p *AccountPool) GetNextForModelAndGroupsExcluding(model string, allowedGro
 			seen[acc.ID] = true
 			continue
 		}
-		if acc.ExpiresAt > 0 && time.Now().Unix() > acc.ExpiresAt-tokenRefreshSkewSeconds {
+		if acc.ExpiresAt > 0 && time.Now().Unix() > acc.ExpiresAt-config.TokenRefreshSkewSeconds {
 			seen[acc.ID] = true
 			continue
 		}

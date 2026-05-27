@@ -19,8 +19,6 @@ import (
 	"github.com/google/uuid"
 )
 
-const tokenRefreshSkewSeconds int64 = 300 // 到期前5分钟刷新
-
 // Handler HTTP 处理器
 type Handler struct {
 	pool *pool.AccountPool
@@ -297,7 +295,7 @@ func (h *Handler) refreshAllAccounts() {
 		}
 
 		// 随机延迟 1-15 秒，避免大量账号同时刷新
-		needsRefresh := (account.ExpiresAt > 0 && time.Now().Unix() > account.ExpiresAt-tokenRefreshSkewSeconds) ||
+		needsRefresh := (account.ExpiresAt > 0 && time.Now().Unix() > account.ExpiresAt-config.TokenRefreshSkewSeconds) ||
 			(account.LastRefresh > 0 && now-account.LastRefresh >= refreshInterval) ||
 			account.LastRefresh == 0
 		if needsRefresh {
@@ -306,7 +304,7 @@ func (h *Handler) refreshAllAccounts() {
 		}
 
 		// 检查 token 是否需要刷新
-		if account.ExpiresAt > 0 && time.Now().Unix() > account.ExpiresAt-tokenRefreshSkewSeconds {
+		if account.ExpiresAt > 0 && time.Now().Unix() > account.ExpiresAt-config.TokenRefreshSkewSeconds {
 			newAccessToken, newRefreshToken, newExpiresAt, profileArn, err := auth.RefreshToken(account)
 			if err != nil {
 				logger.Warnf("[BackgroundRefresh] Token refresh failed for %s: %v", account.Email, err)
@@ -2387,7 +2385,7 @@ func isQuotaError(err error) bool {
 
 // ensureValidToken 确保 token 有效
 func (h *Handler) ensureValidToken(account *config.Account) error {
-	if account.ExpiresAt == 0 || time.Now().Unix() < account.ExpiresAt-tokenRefreshSkewSeconds {
+	if account.ExpiresAt == 0 || time.Now().Unix() < account.ExpiresAt-config.TokenRefreshSkewSeconds {
 		return nil
 	}
 
@@ -2400,7 +2398,7 @@ func (h *Handler) ensureValidToken(account *config.Account) error {
 		account.RefreshToken = latest.RefreshToken
 		account.ExpiresAt = latest.ExpiresAt
 		account.ProfileArn = latest.ProfileArn
-		if account.ExpiresAt == 0 || time.Now().Unix() < account.ExpiresAt-tokenRefreshSkewSeconds {
+		if account.ExpiresAt == 0 || time.Now().Unix() < account.ExpiresAt-config.TokenRefreshSkewSeconds {
 			return nil
 		}
 	}
@@ -3805,7 +3803,7 @@ func (h *Handler) refreshAccountInfoAsync(accountID string) {
 	}
 
 	// 刷新 token（如需）
-	if account.ExpiresAt > 0 && time.Now().Unix() > account.ExpiresAt-tokenRefreshSkewSeconds {
+	if account.ExpiresAt > 0 && time.Now().Unix() > account.ExpiresAt-config.TokenRefreshSkewSeconds {
 		if account.RefreshToken != "" {
 			newAccessToken, newRefreshToken, newExpiresAt, profileArn, err := auth.RefreshToken(account)
 			if err == nil {
@@ -3893,7 +3891,7 @@ func (h *Handler) apiRefreshAccount(w http.ResponseWriter, r *http.Request, id s
 	}
 
 	// 检查 token 是否快过期，先刷新
-	if account.ExpiresAt > 0 && time.Now().Unix() > account.ExpiresAt-tokenRefreshSkewSeconds {
+	if account.ExpiresAt > 0 && time.Now().Unix() > account.ExpiresAt-config.TokenRefreshSkewSeconds {
 		if err := refreshTokenIfNeeded(); err != nil {
 			w.WriteHeader(500)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Token refresh failed: " + err.Error()})
