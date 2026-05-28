@@ -2537,50 +2537,16 @@ func (h *Handler) handleAdminAPI(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 
 	switch {
-	case path == "/accounts" && r.Method == "GET":
-		h.apiGetAccounts(w, r)
-	case path == "/accounts" && r.Method == "POST":
-		h.apiAddAccount(w, r)
-	case path == "/accounts/batch" && r.Method == "POST":
-		h.apiBatchAccounts(w, r)
-	// models/refresh 必须在通用 /refresh 前匹配，否则会被误拦截
-	case path == "/accounts/models/refresh" && r.Method == "POST":
-		h.apiRefreshAllAccountsModels(w, r)
-	case strings.HasPrefix(path, "/accounts/") && strings.HasSuffix(path, "/models/refresh") && r.Method == "POST":
-		id := strings.TrimSuffix(strings.TrimPrefix(path, "/accounts/"), "/models/refresh")
-		h.apiRefreshAccountModels(w, r, id)
-	case strings.HasPrefix(path, "/accounts/") && strings.HasSuffix(path, "/refresh") && r.Method == "POST":
-		id := strings.TrimSuffix(strings.TrimPrefix(path, "/accounts/"), "/refresh")
-		h.apiRefreshAccount(w, r, id)
-	case strings.HasPrefix(path, "/accounts/") && strings.HasSuffix(path, "/test") && r.Method == "POST":
-		id := strings.TrimSuffix(strings.TrimPrefix(path, "/accounts/"), "/test")
-		h.apiTestAccount(w, r, id)
-	case strings.HasPrefix(path, "/accounts/") && strings.HasSuffix(path, "/models/cached") && r.Method == "GET":
-		id := strings.TrimSuffix(strings.TrimPrefix(path, "/accounts/"), "/models/cached")
-		h.apiGetAccountModelsCached(w, r, id)
-	case strings.HasPrefix(path, "/accounts/") && strings.HasSuffix(path, "/models") && r.Method == "GET":
-		id := strings.TrimSuffix(strings.TrimPrefix(path, "/accounts/"), "/models")
-		h.apiGetAccountModels(w, r, id)
-
-	case strings.HasPrefix(path, "/accounts/") && strings.HasSuffix(path, "/full") && r.Method == "GET":
-		id := strings.TrimSuffix(strings.TrimPrefix(path, "/accounts/"), "/full")
-		h.apiGetAccountFull(w, r, id)
-	case strings.HasPrefix(path, "/accounts/") && r.Method == "DELETE":
-		h.apiDeleteAccount(w, r, strings.TrimPrefix(path, "/accounts/"))
-	case strings.HasPrefix(path, "/accounts/") && r.Method == "PUT":
-		h.apiUpdateAccount(w, r, strings.TrimPrefix(path, "/accounts/"))
-	case path == "/auth/iam-sso/start" && r.Method == "POST":
-		h.apiStartIamSso(w, r)
-	case path == "/auth/iam-sso/complete" && r.Method == "POST":
-		h.apiCompleteIamSso(w, r)
-	case path == "/auth/builderid/start" && r.Method == "POST":
-		h.apiStartBuilderIdLogin(w, r)
-	case path == "/auth/builderid/poll" && r.Method == "POST":
-		h.apiPollBuilderIdAuth(w, r)
-	case path == "/auth/sso-token" && r.Method == "POST":
-		h.apiImportSsoToken(w, r)
-	case path == "/auth/credentials" && r.Method == "POST":
-		h.apiImportCredentials(w, r)
+	case path == "/accounts" || strings.HasPrefix(path, "/accounts/"):
+		if !h.dispatchAccountsAPI(w, r, path) {
+			w.WriteHeader(404)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Not Found"})
+		}
+	case strings.HasPrefix(path, "/auth/"):
+		if !h.dispatchAuthAPI(w, r, path) {
+			w.WriteHeader(404)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Not Found"})
+		}
 	case path == "/status" && r.Method == "GET":
 		h.apiGetStatus(w, r)
 	case path == "/settings" && r.Method == "GET":
@@ -2727,6 +2693,73 @@ func (h *Handler) dispatchAlertsAPI(w http.ResponseWriter, r *http.Request, path
 		h.apiAlertsUpdate(w, r, strings.TrimPrefix(path, "/alerts/"))
 	case strings.HasPrefix(path, "/alerts/") && r.Method == "DELETE":
 		h.apiAlertsDelete(w, r, strings.TrimPrefix(path, "/alerts/"))
+	default:
+		return false
+	}
+	return true
+}
+
+// dispatchAccountsAPI routes /accounts* requests. Case order matters:
+// /accounts/models/refresh must precede the generic /accounts/{id}/refresh
+// (otherwise the literal "models" would be parsed as an account id), and
+// the more-specific suffix matches (/models/refresh, /models/cached,
+// /models, /full, /test, /refresh) must precede the bare DELETE/PUT/{id}.
+func (h *Handler) dispatchAccountsAPI(w http.ResponseWriter, r *http.Request, path string) bool {
+	switch {
+	case path == "/accounts" && r.Method == "GET":
+		h.apiGetAccounts(w, r)
+	case path == "/accounts" && r.Method == "POST":
+		h.apiAddAccount(w, r)
+	case path == "/accounts/batch" && r.Method == "POST":
+		h.apiBatchAccounts(w, r)
+	case path == "/accounts/models/refresh" && r.Method == "POST":
+		h.apiRefreshAllAccountsModels(w, r)
+	case strings.HasPrefix(path, "/accounts/") && strings.HasSuffix(path, "/models/refresh") && r.Method == "POST":
+		id := strings.TrimSuffix(strings.TrimPrefix(path, "/accounts/"), "/models/refresh")
+		h.apiRefreshAccountModels(w, r, id)
+	case strings.HasPrefix(path, "/accounts/") && strings.HasSuffix(path, "/refresh") && r.Method == "POST":
+		id := strings.TrimSuffix(strings.TrimPrefix(path, "/accounts/"), "/refresh")
+		h.apiRefreshAccount(w, r, id)
+	case strings.HasPrefix(path, "/accounts/") && strings.HasSuffix(path, "/test") && r.Method == "POST":
+		id := strings.TrimSuffix(strings.TrimPrefix(path, "/accounts/"), "/test")
+		h.apiTestAccount(w, r, id)
+	case strings.HasPrefix(path, "/accounts/") && strings.HasSuffix(path, "/models/cached") && r.Method == "GET":
+		id := strings.TrimSuffix(strings.TrimPrefix(path, "/accounts/"), "/models/cached")
+		h.apiGetAccountModelsCached(w, r, id)
+	case strings.HasPrefix(path, "/accounts/") && strings.HasSuffix(path, "/models") && r.Method == "GET":
+		id := strings.TrimSuffix(strings.TrimPrefix(path, "/accounts/"), "/models")
+		h.apiGetAccountModels(w, r, id)
+	case strings.HasPrefix(path, "/accounts/") && strings.HasSuffix(path, "/full") && r.Method == "GET":
+		id := strings.TrimSuffix(strings.TrimPrefix(path, "/accounts/"), "/full")
+		h.apiGetAccountFull(w, r, id)
+	case strings.HasPrefix(path, "/accounts/") && r.Method == "DELETE":
+		h.apiDeleteAccount(w, r, strings.TrimPrefix(path, "/accounts/"))
+	case strings.HasPrefix(path, "/accounts/") && r.Method == "PUT":
+		h.apiUpdateAccount(w, r, strings.TrimPrefix(path, "/accounts/"))
+	default:
+		return false
+	}
+	return true
+}
+
+// dispatchAuthAPI routes /auth/* requests (all POSTs).
+func (h *Handler) dispatchAuthAPI(w http.ResponseWriter, r *http.Request, path string) bool {
+	if r.Method != "POST" {
+		return false
+	}
+	switch path {
+	case "/auth/iam-sso/start":
+		h.apiStartIamSso(w, r)
+	case "/auth/iam-sso/complete":
+		h.apiCompleteIamSso(w, r)
+	case "/auth/builderid/start":
+		h.apiStartBuilderIdLogin(w, r)
+	case "/auth/builderid/poll":
+		h.apiPollBuilderIdAuth(w, r)
+	case "/auth/sso-token":
+		h.apiImportSsoToken(w, r)
+	case "/auth/credentials":
+		h.apiImportCredentials(w, r)
 	default:
 		return false
 	}
