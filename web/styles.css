@@ -3471,6 +3471,30 @@ img.brand-icon {
 }
 
 /* Compact responsive fixes */
+/* Mid-width header tweak: 721-1080px (small laptops / iPad landscape).
+ * Just shrinks header padding + tab metrics so brand+tabs+actions fit
+ * without triggering the full mobile layout (logout text stays visible).
+ */
+@media (min-width: 721px) and (max-width: 1080px) {
+  .app-header-inner {
+    padding: 0 1rem;
+    gap: 0.5rem;
+  }
+  .tabs {
+    gap: 0.0625rem;
+  }
+  .tab {
+    padding: 0 0.5rem;
+    font-size: 0.78125rem;
+    gap: 0.3rem;
+  }
+  .tab-icon {
+    font-size: 0.78125rem;
+  }
+  .topbar-actions {
+    gap: 0.35rem;
+  }
+}
 @media (max-width: 720px) {
   .detail-grid {
     grid-template-columns: 1fr;

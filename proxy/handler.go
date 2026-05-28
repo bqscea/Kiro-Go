@@ -660,7 +660,6 @@ func (h *Handler) handleModels(w http.ResponseWriter, r *http.Request) {
 		"object": "list",
 		"data":   models,
 	})
-	return
 }
 
 // filterModelsByPolicies 把模型列表按「Key 允许的 group」覆盖到的所有 group policy 求并集后过滤。
@@ -792,7 +791,7 @@ func buildModelInfo(id, ownedBy string, supportsImage bool) map[string]interface
 	}
 	modalitiesMap := map[string][]string{
 		"input":  modalities,
-		"output": []string{"text"},
+		"output": {"text"},
 	}
 
 	return map[string]interface{}{
