@@ -2547,54 +2547,6 @@ func (h *Handler) handleAdminAPI(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(404)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Not Found"})
 		}
-	case path == "/status" && r.Method == "GET":
-		h.apiGetStatus(w, r)
-	case path == "/settings" && r.Method == "GET":
-		h.apiGetSettings(w, r)
-	case path == "/settings" && r.Method == "POST":
-		h.apiUpdateSettings(w, r)
-	case path == "/stats" && r.Method == "GET":
-		h.apiGetStats(w, r)
-	case path == "/stats/reset" && r.Method == "POST":
-		h.apiResetStats(w, r)
-	case path == "/account-events/reset" && r.Method == "POST":
-		h.apiResetAccountEvents(w, r)
-	case path == "/generate-machine-id" && r.Method == "GET":
-		h.apiGenerateMachineId(w, r)
-	case path == "/thinking" && r.Method == "GET":
-		h.apiGetThinkingConfig(w, r)
-	case path == "/thinking" && r.Method == "POST":
-		h.apiUpdateThinkingConfig(w, r)
-	case path == "/endpoint" && r.Method == "GET":
-		h.apiGetEndpointConfig(w, r)
-	case path == "/endpoint" && r.Method == "POST":
-		h.apiUpdateEndpointConfig(w, r)
-	case path == "/proxy" && r.Method == "GET":
-		h.apiGetProxy(w, r)
-	case path == "/proxy" && r.Method == "POST":
-		h.apiUpdateProxy(w, r)
-	case path == "/prompt-filter" && r.Method == "GET":
-		h.apiGetPromptFilter(w, r)
-	case path == "/prompt-filter" && r.Method == "POST":
-		h.apiUpdatePromptFilter(w, r)
-	case path == "/version" && r.Method == "GET":
-		h.apiGetVersion(w, r)
-	case path == "/export" && r.Method == "POST":
-		h.apiExportAccounts(w, r)
-	case path == "/apikeys" && r.Method == "GET":
-		h.apiGetApiKeys(w, r)
-	case path == "/apikeys" && r.Method == "POST":
-		h.apiUpdateApiKeys(w, r)
-	case path == "/groups" && r.Method == "GET":
-		h.apiGetGroups(w, r)
-	case path == "/group-policies" && r.Method == "GET":
-		h.apiGetGroupPolicies(w, r)
-	case path == "/group-policies" && r.Method == "POST":
-		h.apiUpdateGroupPolicies(w, r)
-	case path == "/model-aliases" && r.Method == "GET":
-		h.apiGetModelAliases(w, r)
-	case path == "/model-aliases" && r.Method == "POST":
-		h.apiUpdateModelAliases(w, r)
 	case strings.HasPrefix(path, "/observe/"):
 		if !h.dispatchObserveAPI(w, r, path) {
 			w.WriteHeader(404)
@@ -2611,8 +2563,10 @@ func (h *Handler) handleAdminAPI(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(map[string]string{"error": "Not Found"})
 		}
 	default:
-		w.WriteHeader(404)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Not Found"})
+		if !h.dispatchConfigAPI(w, r, path) {
+			w.WriteHeader(404)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Not Found"})
+		}
 	}
 }
 
@@ -2763,6 +2717,53 @@ func (h *Handler) dispatchAuthAPI(w http.ResponseWriter, r *http.Request, path s
 	default:
 		return false
 	}
+	return true
+}
+
+// adminRouteKey keys the flat (path, method) admin endpoint table.
+type adminRouteKey struct {
+	path   string
+	method string
+}
+
+// configRoutes is a table-driven dispatch table for the residual admin
+// endpoints that don't fit the resource-grouped dispatchers above. Each
+// entry is just (path, method) → handler; method expressions let us
+// store the bound function once at init time.
+var configRoutes = map[adminRouteKey]func(*Handler, http.ResponseWriter, *http.Request){
+	{"/status", "GET"}:                (*Handler).apiGetStatus,
+	{"/settings", "GET"}:               (*Handler).apiGetSettings,
+	{"/settings", "POST"}:              (*Handler).apiUpdateSettings,
+	{"/stats", "GET"}:                  (*Handler).apiGetStats,
+	{"/stats/reset", "POST"}:           (*Handler).apiResetStats,
+	{"/account-events/reset", "POST"}:  (*Handler).apiResetAccountEvents,
+	{"/generate-machine-id", "GET"}:    (*Handler).apiGenerateMachineId,
+	{"/thinking", "GET"}:               (*Handler).apiGetThinkingConfig,
+	{"/thinking", "POST"}:              (*Handler).apiUpdateThinkingConfig,
+	{"/endpoint", "GET"}:               (*Handler).apiGetEndpointConfig,
+	{"/endpoint", "POST"}:              (*Handler).apiUpdateEndpointConfig,
+	{"/proxy", "GET"}:                  (*Handler).apiGetProxy,
+	{"/proxy", "POST"}:                 (*Handler).apiUpdateProxy,
+	{"/prompt-filter", "GET"}:          (*Handler).apiGetPromptFilter,
+	{"/prompt-filter", "POST"}:         (*Handler).apiUpdatePromptFilter,
+	{"/version", "GET"}:                (*Handler).apiGetVersion,
+	{"/export", "POST"}:                (*Handler).apiExportAccounts,
+	{"/apikeys", "GET"}:                (*Handler).apiGetApiKeys,
+	{"/apikeys", "POST"}:               (*Handler).apiUpdateApiKeys,
+	{"/groups", "GET"}:                 (*Handler).apiGetGroups,
+	{"/group-policies", "GET"}:         (*Handler).apiGetGroupPolicies,
+	{"/group-policies", "POST"}:        (*Handler).apiUpdateGroupPolicies,
+	{"/model-aliases", "GET"}:          (*Handler).apiGetModelAliases,
+	{"/model-aliases", "POST"}:         (*Handler).apiUpdateModelAliases,
+}
+
+// dispatchConfigAPI looks up the flat config-endpoint table.
+func (h *Handler) dispatchConfigAPI(w http.ResponseWriter, r *http.Request, path string) bool {
+	fn, ok := configRoutes[adminRouteKey{path, r.Method}]
+	if !ok {
+		return false
+	}
+	fn(h, w, r)
 	return true
 }
 
