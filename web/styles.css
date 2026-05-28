@@ -2972,6 +2972,10 @@ img.brand-icon {
   border-color: var(--border);
   color: var(--foreground);
 }
+.icon-btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
 .icon-btn svg {
   width: 0.875rem;
   height: 0.875rem;

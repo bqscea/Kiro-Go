@@ -415,7 +415,6 @@
   "settings.apiKeyMaxTokens": "Max tokens / req",
   "settings.apiKeyUsage": "Used",
   "settings.apiKeyUsageTip": "This minute / today · cumulative req / tokens / credits",
-  "groupBoard.editPolicy": "Edit Whitelist",
   "settings.groupPolicy": "Group → Model Whitelist",
   "settings.groupPolicyHint": "Bind a group to allowed/denied models. e.g. pro → claude-opus-4-7, free → claude-sonnet-4.5. Comma separated; empty = unrestricted; deny list takes precedence.",
   "settings.addGroupPolicy": "+ Add Policy",
