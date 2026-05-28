@@ -1306,12 +1306,21 @@ img.brand-icon {
   padding: 1.5rem;
 }
 
-/* Stats grid */
+/* Stats grid
+ * Breakpoints: 6 cols (default) → 4 (≤1280) → 3 (≤960) → 2 (≤640).
+ * 12 cards lay out as 6×2 / 4×3 / 3×4 / 2×6, avoiding the awkward
+ * 1024–1280px range where 6 cols become cramped (~150px/card).
+ */
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 0.5rem;
   margin-bottom: 0.875rem;
+}
+@media (max-width: 1280px) {
+  .stats-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
 }
 @media (max-width: 960px) {
   .stats-grid {

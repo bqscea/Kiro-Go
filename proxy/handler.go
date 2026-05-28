@@ -22,6 +22,15 @@ import (
 var rawRefreshTokenFunc = auth.RefreshToken
 var tokenRefreshCalls sync.Map
 
+// CORS header values, hoisted to package level so the hot ServeHTTP path
+// doesn't allocate / re-evaluate these long literals on every request.
+const (
+	corsAllowOrigin   = "*"
+	corsAllowMethods  = "GET, POST, PUT, DELETE, OPTIONS"
+	corsAllowHeaders  = "Content-Type, Authorization, X-Api-Key, anthropic-version, anthropic-beta, x-api-key, x-stainless-os, x-stainless-lang, x-stainless-package-version, x-stainless-runtime, x-stainless-runtime-version, x-stainless-arch"
+	corsExposeHeaders = "x-request-id, x-ratelimit-limit-requests, x-ratelimit-limit-tokens, x-ratelimit-remaining-requests, x-ratelimit-remaining-tokens, x-ratelimit-reset-requests, x-ratelimit-reset-tokens"
+)
+
 type tokenRefreshCall struct {
 	done         chan struct{}
 	accessToken  string
@@ -473,11 +482,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Debug-level request trace for fine-grained visibility
 	logger.Debugf("[HTTP] %s %s from %s", r.Method, path, r.RemoteAddr)
 
-	// CORS - 完整的头部支持
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Api-Key, anthropic-version, anthropic-beta, x-api-key, x-stainless-os, x-stainless-lang, x-stainless-package-version, x-stainless-runtime, x-stainless-runtime-version, x-stainless-arch")
-	w.Header().Set("Access-Control-Expose-Headers", "x-request-id, x-ratelimit-limit-requests, x-ratelimit-limit-tokens, x-ratelimit-remaining-requests, x-ratelimit-remaining-tokens, x-ratelimit-reset-requests, x-ratelimit-reset-tokens")
+	// CORS - 完整的头部支持（值见包级 cors* 常量）
+	w.Header().Set("Access-Control-Allow-Origin", corsAllowOrigin)
+	w.Header().Set("Access-Control-Allow-Methods", corsAllowMethods)
+	w.Header().Set("Access-Control-Allow-Headers", corsAllowHeaders)
+	w.Header().Set("Access-Control-Expose-Headers", corsExposeHeaders)
 
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(204)
