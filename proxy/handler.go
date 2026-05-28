@@ -10,6 +10,7 @@ import (
 	"kiro-go/logger"
 	"kiro-go/pool"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -29,6 +30,17 @@ const (
 	corsAllowMethods  = "GET, POST, PUT, DELETE, OPTIONS"
 	corsAllowHeaders  = "Content-Type, Authorization, X-Api-Key, anthropic-version, anthropic-beta, x-api-key, x-stainless-os, x-stainless-lang, x-stainless-package-version, x-stainless-runtime, x-stainless-runtime-version, x-stainless-arch"
 	corsExposeHeaders = "x-request-id, x-ratelimit-limit-requests, x-ratelimit-limit-tokens, x-ratelimit-remaining-requests, x-ratelimit-remaining-tokens, x-ratelimit-reset-requests, x-ratelimit-reset-tokens"
+)
+
+// Public-API path aliases. Each endpoint accepts multiple URL spellings
+// so callers wired for either Anthropic, OpenAI, or "no-version" prefixes
+// hit the same handler. Defined as package-level slices so ServeHTTP can
+// switch on slices.Contains rather than re-typing OR chains.
+var (
+	claudeMessagesPaths    = []string{"/v1/messages", "/messages", "/anthropic/v1/messages"}
+	claudeCountTokensPaths = []string{"/v1/messages/count_tokens", "/messages/count_tokens"}
+	openAICompletionsPaths = []string{"/v1/chat/completions", "/chat/completions"}
+	listModelsPaths        = []string{"/v1/models", "/models"}
 )
 
 type tokenRefreshCall struct {
@@ -391,8 +403,8 @@ func (h *Handler) refreshAllAccounts() {
 func extractProvidedKey(r *http.Request) string {
 	authHeader := r.Header.Get("Authorization")
 	apiKeyHeader := r.Header.Get("X-Api-Key")
-	if strings.HasPrefix(authHeader, "Bearer ") {
-		return strings.TrimPrefix(authHeader, "Bearer ")
+	if token, ok := strings.CutPrefix(authHeader, "Bearer "); ok {
+		return token
 	}
 	return apiKeyHeader
 }
@@ -496,7 +508,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// 路由
 	switch {
 	// API 端点（需要验证 API Key）
-	case path == "/v1/messages" || path == "/messages" || path == "/anthropic/v1/messages":
+	case slices.Contains(claudeMessagesPaths, path):
 		if !h.validateApiKey(r) {
 			h.sendClaudeError(w, 401, "authentication_error", "Invalid or missing API key")
 			return
@@ -506,7 +518,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.handleClaudeMessages(w, r)
-	case path == "/v1/messages/count_tokens" || path == "/messages/count_tokens":
+	case slices.Contains(claudeCountTokensPaths, path):
 		if !h.validateApiKey(r) {
 			h.sendClaudeError(w, 401, "authentication_error", "Invalid or missing API key")
 			return
@@ -516,7 +528,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.handleCountTokens(w, r)
-	case path == "/v1/chat/completions" || path == "/chat/completions":
+	case slices.Contains(openAICompletionsPaths, path):
 		if !h.validateApiKey(r) {
 			h.sendOpenAIError(w, 401, "authentication_error", "Invalid or missing API key")
 			return
@@ -526,7 +538,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.handleOpenAIChat(w, r)
-	case path == "/v1/models" || path == "/models":
+	case slices.Contains(listModelsPaths, path):
 		h.handleModels(w, r)
 	case path == "/api/event_logging/batch":
 		// Claude Code 遥测端点 - 直接返回 200 OK

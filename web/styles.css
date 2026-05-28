@@ -427,6 +427,13 @@ textarea:focus,
 select:focus {
   border-color: var(--border-focus);
 }
+.input:focus-visible,
+input:not([type="checkbox"]):not([type="radio"]):focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
 input::placeholder,
 textarea::placeholder {
   color: var(--muted-foreground);
