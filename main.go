@@ -54,6 +54,11 @@ func main() {
 		config.SetPassword(envPassword)
 	}
 
+	// 提醒：未改默认密码 → 暴露公网 = 任何人可控管理台
+	if config.IsDefaultPassword() {
+		logger.Warnf("Admin password is still the default %q — change it via the admin panel or ADMIN_PASSWORD env var before exposing /admin to untrusted networks.", config.DefaultPassword)
+	}
+
 	// 初始化账号池
 	pool.GetPool()
 

@@ -28,6 +28,7 @@
   --success-foreground: #ffffff;
   --warning: #ffae04;
   --warning-foreground: #000000;
+  --warning-text: #b45309;
   --info: #2d62ef;
   --info-foreground: #ffffff;
   --brand-purple: #9148ff;
@@ -83,6 +84,8 @@
   --success-foreground: #001f1d;
   --warning: #ffae04;
   --warning-foreground: #000000;
+  /* amber-400: ~7.8:1 contrast on #000 — comfortably above WCAG AA 4.5:1 */
+  --warning-text: #fbbf24;
   --info: #2671f4;
   --info-foreground: #ffffff;
   --brand-purple: #b582ff;
@@ -1417,7 +1420,7 @@ img.brand-icon {
   color: var(--destructive) !important;
 }
 .stat-value--warning {
-  color: #b45309 !important;
+  color: var(--warning-text) !important;
 }
 .stat-label {
   font-size: 0.625rem;
@@ -1445,7 +1448,7 @@ img.brand-icon {
   opacity: 0.6;
 }
 .stat-icon--warning {
-  color: #b45309;
+  color: var(--warning-text);
   opacity: 0.65;
 }
 @media (max-width: 640px) {
@@ -2719,7 +2722,7 @@ img.brand-icon {
   margin-bottom: 0.75rem;
 }
 .standby-active {
-  color: #b45309;
+  color: var(--warning-text);
   font-weight: 600;
 }
 .machine-id-row {

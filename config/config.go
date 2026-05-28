@@ -300,6 +300,12 @@ const TokenRefreshSkewSeconds int64 = 300 // 5 minutes
 // Version current version
 const Version = "1.0.9"
 
+// DefaultPassword is the password applied to a freshly-created config.
+// Operators MUST change this before exposing the admin panel to the
+// internet — IsDefaultPassword() reports whether the live config still
+// uses this value so callers can surface a startup warning.
+const DefaultPassword = "changeme"
+
 var (
 	cfg     *Config
 	cfgLock sync.RWMutex
@@ -308,7 +314,7 @@ var (
 
 func defaultConfig() *Config {
 	return &Config{
-		Password:      "changeme",
+		Password:      DefaultPassword,
 		Port:          8080,
 		Host:          "0.0.0.0",
 		RequireApiKey: false,
@@ -439,6 +445,15 @@ func GetPassword() string {
 	cfgLock.RLock()
 	defer cfgLock.RUnlock()
 	return cfg.Password
+}
+
+// IsDefaultPassword reports whether the active admin password is still
+// the bundled default (see DefaultPassword). Use this to emit a startup
+// warning when an operator has not yet rotated credentials.
+func IsDefaultPassword() bool {
+	cfgLock.RLock()
+	defer cfgLock.RUnlock()
+	return cfg.Password == DefaultPassword
 }
 
 func GetPort() int {
