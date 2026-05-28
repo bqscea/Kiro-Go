@@ -10,6 +10,7 @@ import (
 	"kiro-go/logger"
 	"kiro-go/pool"
 	"net/http"
+	"net/url"
 	"slices"
 	"sort"
 	"strings"
@@ -2628,6 +2629,12 @@ func (h *Handler) apiAddAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := validateProxyURL(account.ProxyURL); err != nil {
+		w.WriteHeader(400)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
 	if account.ID == "" {
 		account.ID = auth.GenerateAccountID()
 	}
@@ -2764,6 +2771,11 @@ func (h *Handler) apiUpdateAccount(w http.ResponseWriter, r *http.Request, id st
 		existing.OverageWeight = clampInt(int(v), 1, 10)
 	}
 	if v, ok := updates["proxyURL"].(string); ok {
+		if err := validateProxyURL(v); err != nil {
+			w.WriteHeader(400)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
 		existing.ProxyURL = v
 	}
 	if v, ok := updates["groups"].([]interface{}); ok {
@@ -4115,6 +4127,32 @@ func (h *Handler) apiGetProxy(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// allowedProxySchemes is the closed set of URL schemes an admin may set
+// for any outbound-proxy field (global or per-account). Anything else is
+// rejected — file://, ftp://, gopher://, etc. would all turn the proxy
+// hop into an unintended SSRF / exfiltration channel.
+var allowedProxySchemes = []string{"http", "https", "socks5", "socks5h"}
+
+// validateProxyURL accepts an empty string (meaning "no proxy"), otherwise
+// requires a well-formed URL with one of allowedProxySchemes and a
+// non-empty host. Returns nil if the value is safe to persist.
+func validateProxyURL(raw string) error {
+	if raw == "" {
+		return nil
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("proxyURL is not a valid URL: %w", err)
+	}
+	if !slices.Contains(allowedProxySchemes, u.Scheme) {
+		return fmt.Errorf("proxyURL scheme %q not allowed (use one of: %s)", u.Scheme, strings.Join(allowedProxySchemes, ", "))
+	}
+	if u.Host == "" {
+		return fmt.Errorf("proxyURL is missing a host")
+	}
+	return nil
+}
+
 // apiUpdateProxy 更新代理配置并立即生效
 func (h *Handler) apiUpdateProxy(w http.ResponseWriter, r *http.Request) {
 	var req struct {
@@ -4126,16 +4164,10 @@ func (h *Handler) apiUpdateProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 验证代理 URL 格式（非空时）
-	if req.ProxyURL != "" {
-		if !strings.HasPrefix(req.ProxyURL, "http://") &&
-			!strings.HasPrefix(req.ProxyURL, "https://") &&
-			!strings.HasPrefix(req.ProxyURL, "socks5://") &&
-			!strings.HasPrefix(req.ProxyURL, "socks5h://") {
-			w.WriteHeader(400)
-			json.NewEncoder(w).Encode(map[string]string{"error": "proxyURL must start with http://, https://, socks5://, or socks5h://"})
-			return
-		}
+	if err := validateProxyURL(req.ProxyURL); err != nil {
+		w.WriteHeader(400)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
 	}
 
 	if err := config.UpdateProxySettings(req.ProxyURL); err != nil {

@@ -2660,6 +2660,10 @@ img.brand-icon {
   background: var(--muted);
   color: var(--foreground);
 }
+.detail-tab:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
 .detail-tab.active {
   background: var(--foreground);
   border-color: var(--foreground);
@@ -3050,6 +3054,11 @@ img.brand-icon {
   border-color: var(--border);
   color: var(--accent-foreground);
 }
+.lang-btn:focus-visible {
+  z-index: 3;
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
 .lang-btn.active {
   z-index: 2;
   background: var(--foreground);
@@ -3227,6 +3236,10 @@ img.brand-icon {
 .status-tab:hover {
   background: var(--muted);
   color: var(--foreground);
+}
+.status-tab:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
 }
 .status-tab.active {
   background: var(--foreground);
