@@ -2658,6 +2658,22 @@ func (h *Handler) handleAdminAPI(w http.ResponseWriter, r *http.Request) {
 		h.apiAlertsUpdate(w, r, strings.TrimPrefix(path, "/alerts/"))
 	case strings.HasPrefix(path, "/alerts/") && r.Method == "DELETE":
 		h.apiAlertsDelete(w, r, strings.TrimPrefix(path, "/alerts/"))
+	case path == "/backups" || strings.HasPrefix(path, "/backups/"):
+		if !h.dispatchBackupsAPI(w, r, path) {
+			w.WriteHeader(404)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Not Found"})
+		}
+	default:
+		w.WriteHeader(404)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Not Found"})
+	}
+}
+
+// dispatchBackupsAPI routes /backups* requests. Extracted from
+// handleAdminAPI to keep the top-level switch readable. Returns
+// false if the (path, method) combo didn't match any backup endpoint.
+func (h *Handler) dispatchBackupsAPI(w http.ResponseWriter, r *http.Request, path string) bool {
+	switch {
 	case path == "/backups" && r.Method == "GET":
 		h.apiBackupsList(w, r)
 	case path == "/backups" && r.Method == "POST":
@@ -2679,9 +2695,9 @@ func (h *Handler) handleAdminAPI(w http.ResponseWriter, r *http.Request) {
 	case strings.HasPrefix(path, "/backups/") && r.Method == "DELETE":
 		h.apiBackupsDelete(w, r, strings.TrimPrefix(path, "/backups/"))
 	default:
-		w.WriteHeader(404)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Not Found"})
+		return false
 	}
+	return true
 }
 
 func (h *Handler) apiGetAccounts(w http.ResponseWriter, r *http.Request) {
