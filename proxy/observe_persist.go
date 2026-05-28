@@ -3,8 +3,10 @@ package proxy
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"kiro-go/logger"
@@ -14,10 +16,10 @@ const observeDataFile = "data/observe/observe.json"
 
 // observePersistData 持久化数据结构
 type observePersistData struct {
-	SavedAt        int64                 `json:"savedAt"`
-	RecentRequests []requestRecord       `json:"recentRequests"`
-	RecentErrors   []errorRecord         `json:"recentErrors"`
-	AccountEvents  []accountEventRecord  `json:"accountEvents"`
+	SavedAt        int64                `json:"savedAt"`
+	RecentRequests []requestRecord      `json:"recentRequests"`
+	RecentErrors   []errorRecord        `json:"recentErrors"`
+	AccountEvents  []accountEventRecord `json:"accountEvents"`
 }
 
 // Save 保存观测数据到磁盘
@@ -72,7 +74,7 @@ func (s *observeStore) Save() error {
 		return err
 	}
 
-	return os.WriteFile(observeDataFile, jsonData, 0600)
+	return writeObserveFileAtomic(observeDataFile, jsonData, 0600)
 }
 
 // Load 从磁盘加载观测数据
@@ -86,6 +88,10 @@ func (s *observeStore) Load() error {
 			return nil
 		}
 		return err
+	}
+	if len(strings.TrimSpace(string(data))) == 0 {
+		_ = os.WriteFile(observeDataFile, []byte("{\n  \"savedAt\": 0,\n  \"recentRequests\": [],\n  \"recentErrors\": [],\n  \"accountEvents\": []\n}\n"), 0600)
+		return nil
 	}
 
 	var persist observePersistData
@@ -116,6 +122,53 @@ func (s *observeStore) Load() error {
 
 	logger.Infof("[Observe] Loaded %d requests, %d errors, %d events from %s", len(persist.RecentRequests), len(persist.RecentErrors), len(persist.AccountEvents), observeDataFile)
 	return nil
+}
+
+func writeObserveFileAtomic(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	cleanup := true
+	defer func() {
+		if cleanup {
+			_ = os.Remove(tmpName)
+		}
+	}()
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Chmod(perm); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return err
+	}
+	cleanup = false
+
+	dirFile, err := os.Open(dir)
+	if err != nil {
+		if errors.Is(err, os.ErrPermission) {
+			return nil
+		}
+		return err
+	}
+	defer dirFile.Close()
+	return dirFile.Sync()
 }
 
 // backgroundObserveSaver 后台定期保存观测数据

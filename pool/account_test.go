@@ -2,6 +2,7 @@ package pool
 
 import (
 	"kiro-go/config"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -82,5 +83,31 @@ func TestGetNextKeepsFiveMinuteTokenAvailable(t *testing.T) {
 	}
 	if got.ID != account.ID {
 		t.Fatalf("expected account %q, got %q", account.ID, got.ID)
+	}
+}
+
+func TestGetNextForModelAndGroupsExcludingSkipsFailedAccount(t *testing.T) {
+	if err := config.Init(filepath.Join(t.TempDir(), "config.json")); err != nil {
+		t.Fatalf("init config: %v", err)
+	}
+	p := &AccountPool{
+		cooldowns:       make(map[string]time.Time),
+		modelLists:      make(map[string]map[string]bool),
+		clientBindings:  make(map[string]string),
+		bindingLastSeen: make(map[string]time.Time),
+	}
+	p.accounts = []config.Account{
+		{ID: "failed", Enabled: true},
+		{ID: "healthy", Enabled: true},
+	}
+	p.modelLists["failed"] = map[string]bool{"claude-sonnet-4.5": true}
+	p.modelLists["healthy"] = map[string]bool{"claude-sonnet-4.5": true}
+
+	got := p.GetNextForModelAndGroupsExcluding("claude-sonnet-4.5", nil, map[string]bool{"failed": true}, "")
+	if got == nil {
+		t.Fatalf("expected healthy account")
+	}
+	if got.ID != "healthy" {
+		t.Fatalf("expected healthy account, got %q", got.ID)
 	}
 }

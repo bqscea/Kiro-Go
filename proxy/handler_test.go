@@ -1,6 +1,12 @@
 package proxy
 
-import "testing"
+import (
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"strings"
+	"testing"
+)
 
 func TestThinkingSourceReasoningFirst(t *testing.T) {
 	var source thinkingStreamSource
@@ -13,6 +19,46 @@ func TestThinkingSourceReasoningFirst(t *testing.T) {
 	}
 	if allowTagSource(&source) {
 		t.Fatalf("expected tag source to be rejected after reasoning source selected")
+	}
+}
+
+func TestAdminPagesServeMainUI(t *testing.T) {
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(".."); err != nil {
+		t.Fatalf("chdir repo root: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(wd); err != nil {
+			t.Fatalf("restore working dir: %v", err)
+		}
+	})
+
+	handler := &Handler{}
+
+	tests := []struct {
+		path string
+		want string
+	}{
+		{path: "/admin", want: "/admin/app.js"},
+		{path: "/admin/styles.css", want: "Header tabs"},
+		{path: "/admin/app.js", want: "Kiro-Go admin UI logic"},
+	}
+
+	for _, tc := range tests {
+		req := httptest.NewRequest(http.MethodGet, tc.path, nil)
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: expected 200, got %d", tc.path, rec.Code)
+		}
+		if !strings.Contains(rec.Body.String(), tc.want) {
+			t.Fatalf("%s: expected response to contain %q", tc.path, tc.want)
+		}
 	}
 }
 
@@ -47,6 +93,33 @@ func TestThinkingSourceSameSourceRemainsAllowed(t *testing.T) {
 	if !allowReasoningSource(&source) {
 		t.Fatalf("expected repeated reasoning source selection to stay allowed")
 	}
+}
+
+func TestUpstreamErrorClassificationCoversFailoverCases(t *testing.T) {
+	tests := []struct {
+		name string
+		msg  string
+		want upstreamErrorClassification
+	}{
+		{name: "quota", msg: "HTTP 429: quota exhausted", want: upstreamErrorClassification{Quota: true}},
+		{name: "overage", msg: "HTTP 402 from Kiro IDE: OVERAGE limit exceeded", want: upstreamErrorClassification{Quota: true, Overage: true}},
+		{name: "suspended", msg: "Your User ID temporarily is suspended", want: upstreamErrorClassification{Suspended: true}},
+		{name: "profile", msg: "no available Kiro profile", want: upstreamErrorClassification{Profile: true}},
+		{name: "auth", msg: "Authentication failed - token invalid or expired", want: upstreamErrorClassification{Auth: true}},
+	}
+
+	for _, tc := range tests {
+		got := classifyUpstreamError(assertError(tc.msg))
+		if got.Quota != tc.want.Quota || got.Overage != tc.want.Overage || got.Suspended != tc.want.Suspended || got.Profile != tc.want.Profile || got.Auth != tc.want.Auth {
+			t.Fatalf("%s: got %#v, want %#v", tc.name, got, tc.want)
+		}
+	}
+}
+
+type assertError string
+
+func (e assertError) Error() string {
+	return string(e)
 }
 
 func TestValidateOpenAIRequestShapeRejectsAssistantPrefill(t *testing.T) {

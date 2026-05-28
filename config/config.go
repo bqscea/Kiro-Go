@@ -13,6 +13,7 @@ package config
 import (
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -71,12 +72,12 @@ type Account struct {
 	OverageWeight int  `json:"overageWeight,omitempty"` // 1-10, lower values reduce overage request frequency
 
 	// Account status
-	Enabled      bool   `json:"enabled"`                // Whether account is active in the pool
-	Silent       bool   `json:"silent,omitempty"`       // Silent mode: account is disabled but not banned
-	SilentReason string `json:"silentReason,omitempty"` // Reason for silent mode
-	SilentTime   int64  `json:"silentTime,omitempty"`   // Timestamp when silent mode was set
-	Standby      bool   `json:"standby,omitempty"`      // Standby mode: account is refreshed but not used for requests
-	StandbyTime  int64  `json:"standbyTime,omitempty"`  // Timestamp when standby mode was set
+	Enabled       bool   `json:"enabled"`                 // Whether account is active in the pool
+	Silent        bool   `json:"silent,omitempty"`        // Silent mode: account is disabled but not banned
+	SilentReason  string `json:"silentReason,omitempty"`  // Reason for silent mode
+	SilentTime    int64  `json:"silentTime,omitempty"`    // Timestamp when silent mode was set
+	Standby       bool   `json:"standby,omitempty"`       // Standby mode: account is refreshed but not used for requests
+	StandbyTime   int64  `json:"standbyTime,omitempty"`   // Timestamp when standby mode was set
 	BanStatus     string `json:"banStatus,omitempty"`     // Ban status: "ACTIVE", "BANNED", "SUSPENDED"
 	BanReason     string `json:"banReason,omitempty"`     // Reason for ban/suspension
 	BanTime       int64  `json:"banTime,omitempty"`       // Timestamp when ban was detected
@@ -297,13 +298,23 @@ type AccountInfo struct {
 const TokenRefreshSkewSeconds int64 = 300 // 5 minutes
 
 // Version current version
-const Version = "1.0.8"
+const Version = "1.0.9"
 
 var (
 	cfg     *Config
 	cfgLock sync.RWMutex
 	cfgPath string
 )
+
+func defaultConfig() *Config {
+	return &Config{
+		Password:      "changeme",
+		Port:          8080,
+		Host:          "0.0.0.0",
+		RequireApiKey: false,
+		Accounts:      []Account{},
+	}
+}
 
 // Init initializes the configuration system with the specified file path.
 // If the file doesn't exist, a default configuration is created.
@@ -334,16 +345,14 @@ func Load() error {
 		if os.IsNotExist(err) {
 			// Create default configuration.
 			// Binds to 0.0.0.0 by default for Docker/container compatibility.
-			cfg = &Config{
-				Password:      "changeme",
-				Port:          8080,
-				Host:          "0.0.0.0",
-				RequireApiKey: false,
-				Accounts:      []Account{},
-			}
+			cfg = defaultConfig()
 			return Save()
 		}
 		return err
+	}
+	if len(strings.TrimSpace(string(data))) == 0 {
+		cfg = defaultConfig()
+		return Save()
 	}
 
 	var c Config
@@ -362,7 +371,54 @@ func Save() error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(cfgPath, data, 0600)
+	return writeFileAtomic(cfgPath, data, 0600)
+}
+
+func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	cleanup := true
+	defer func() {
+		if cleanup {
+			_ = os.Remove(tmpName)
+		}
+	}()
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Chmod(perm); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return err
+	}
+	cleanup = false
+
+	dirFile, err := os.Open(dir)
+	if err != nil {
+		if errors.Is(err, os.ErrPermission) {
+			return nil
+		}
+		return err
+	}
+	defer dirFile.Close()
+	return dirFile.Sync()
 }
 
 // SetPassword updates the admin password.
@@ -789,6 +845,21 @@ func UpdateSettings(apiKey string, requireApiKey bool, password string) error {
 	defer cfgLock.Unlock()
 	cfg.ApiKey = apiKey
 	cfg.RequireApiKey = requireApiKey
+	if password != "" {
+		cfg.Password = password
+	}
+	return Save()
+}
+
+func UpdateSettingsPatch(apiKey *string, requireApiKey *bool, password string) error {
+	cfgLock.Lock()
+	defer cfgLock.Unlock()
+	if apiKey != nil {
+		cfg.ApiKey = *apiKey
+	}
+	if requireApiKey != nil {
+		cfg.RequireApiKey = *requireApiKey
+	}
 	if password != "" {
 		cfg.Password = password
 	}

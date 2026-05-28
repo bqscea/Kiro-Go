@@ -1121,19 +1121,34 @@ func (h *Handler) handleClaudeMessagesInternal(w http.ResponseWriter, r *http.Re
 	// 获取账号（按模型过滤 + 按 API Key 允许的 group 过滤）
 	actualModel, _ := ParseModelAndThinking(req.Model, config.GetThinkingConfig().Suffix)
 	allowedGroups := h.resolveAllowedGroups(r)
-	account := h.pool.GetNextForModelAndGroups(actualModel, allowedGroups, r.RemoteAddr)
+	var account *config.Account
+	var lastTokenErr error
+	triedIDs := make(map[string]bool)
+	for {
+		candidate := h.pool.GetNextForModelAndGroupsExcluding(actualModel, allowedGroups, triedIDs, r.RemoteAddr)
+		if candidate == nil {
+			break
+		}
+		triedIDs[candidate.ID] = true
+
+		if err := h.ensureValidToken(candidate); err != nil {
+			lastTokenErr = err
+			h.autoSilentIfSuspended(candidate.ID, err)
+			continue
+		}
+		account = candidate
+		break
+	}
 	if account == nil {
+		if lastTokenErr != nil {
+			h.sendClaudeError(w, 503, "api_error", "Token refresh failed: "+lastTokenErr.Error())
+			return
+		}
 		if len(allowedGroups) > 0 {
 			h.sendClaudeError(w, 503, "api_error", "No available accounts in allowed groups: "+strings.Join(allowedGroups, ","))
 			return
 		}
 		h.sendClaudeError(w, 503, "api_error", "No available accounts")
-		return
-	}
-
-	// 检查并刷新 token
-	if err := h.ensureValidToken(account); err != nil {
-		h.sendClaudeError(w, 503, "api_error", "Token refresh failed: "+err.Error())
 		return
 	}
 
@@ -1678,6 +1693,8 @@ type upstreamErrorClassification struct {
 	Quota     bool
 	Suspended bool
 	Overage   bool
+	Auth      bool
+	Profile   bool
 }
 
 func classifyUpstreamError(err error) upstreamErrorClassification {
@@ -1694,8 +1711,21 @@ func classifyUpstreamError(err error) upstreamErrorClassification {
 			strings.Contains(errMsg, "MONTHLY_REQUEST_COUNT") ||
 			strings.Contains(errMsg, "DAILY_REQUEST_COUNT"),
 		Suspended: strings.Contains(lower, "temporarily is suspended") ||
-			strings.Contains(lower, "temporarily suspended"),
-		Overage: strings.Contains(errMsg, "402") && strings.Contains(errMsg, "OVERAGE"),
+			strings.Contains(lower, "temporarily suspended") ||
+			strings.Contains(lower, "temporarily_suspended") ||
+			strings.Contains(lower, "account suspended"),
+		Overage: strings.Contains(errMsg, "402") && strings.Contains(lower, "overage"),
+		Auth: strings.Contains(lower, "http 401") ||
+			strings.Contains(lower, "http 403") ||
+			strings.Contains(lower, "unauthorized") ||
+			strings.Contains(lower, "forbidden") ||
+			strings.Contains(lower, "authentication failed") ||
+			strings.Contains(lower, "token invalid") ||
+			strings.Contains(lower, "token expired") ||
+			strings.Contains(lower, "invalid_grant") ||
+			strings.Contains(lower, "access token expired") ||
+			strings.Contains(lower, "refresh token expired"),
+		Profile: strings.Contains(lower, "no available kiro profile"),
 	}
 }
 
@@ -1741,7 +1771,8 @@ func shouldAutoSilentError(err error) bool {
 }
 
 func (h *Handler) autoSilentIfSuspended(accountID string, err error) {
-	if shouldAutoSilentError(err) {
+	classified := classifyUpstreamError(err)
+	if classified.Suspended || classified.Auth || classified.Profile {
 		h.setAccountSilent(accountID, "auto suspended: "+err.Error())
 	}
 }
@@ -3666,15 +3697,7 @@ func (h *Handler) apiUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.ApiKey != nil || req.RequireApiKey != nil || req.Password != "" {
-		apiKey := ""
-		if req.ApiKey != nil {
-			apiKey = *req.ApiKey
-		}
-		requireApiKey := false
-		if req.RequireApiKey != nil {
-			requireApiKey = *req.RequireApiKey
-		}
-		if err := config.UpdateSettings(apiKey, requireApiKey, req.Password); err != nil {
+		if err := config.UpdateSettingsPatch(req.ApiKey, req.RequireApiKey, req.Password); err != nil {
 			w.WriteHeader(500)
 			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 			return

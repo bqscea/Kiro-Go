@@ -10,10 +10,10 @@ import (
 )
 
 var (
-	credPath   string
-	credLock   sync.RWMutex
+	credPath    string
+	credLock    sync.RWMutex
 	credentials []Account
-	credLoaded bool
+	credLoaded  bool
 )
 
 // InitCredentials sets the credentials file path (called from Init)
@@ -67,14 +67,8 @@ func SaveCredentials() error {
 		return fmt.Errorf("marshal credentials: %w", err)
 	}
 
-	// Atomic write: tmp + rename
-	tmpPath := credPath + ".tmp"
-	if err := os.WriteFile(tmpPath, data, 0600); err != nil {
-		return fmt.Errorf("write tmp credentials: %w", err)
-	}
-	if err := os.Rename(tmpPath, credPath); err != nil {
-		os.Remove(tmpPath)
-		return fmt.Errorf("rename credentials: %w", err)
+	if err := writeFileAtomic(credPath, data, 0600); err != nil {
+		return fmt.Errorf("write credentials: %w", err)
 	}
 	return nil
 }
