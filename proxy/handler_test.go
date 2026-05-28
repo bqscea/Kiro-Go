@@ -446,3 +446,39 @@ func TestBuildAnthropicModelsResponseGeneratesThinkingVariants(t *testing.T) {
 		t.Fatalf("expected image capability to be preserved, got %#v", models[0]["supports_image"])
 	}
 }
+
+// TestValidateProxyURL pins the SSRF allowlist for the outbound proxy field.
+// Every write path (global + per-account) funnels through validateProxyURL,
+// so a regression here would silently re-open the surface.
+func TestValidateProxyURL(t *testing.T) {
+	cases := []struct {
+		name    string
+		input   string
+		wantErr bool
+	}{
+		{"empty disables proxy", "", false},
+		{"http", "http://proxy.example:8080", false},
+		{"https", "https://proxy.example:8443", false},
+		{"socks5", "socks5://proxy.example:1080", false},
+		{"socks5h", "socks5h://proxy.example:1080", false},
+		{"http with credentials", "http://user:pass@proxy.example:8080", false},
+
+		{"file scheme blocked", "file:///etc/passwd", true},
+		{"ftp scheme blocked", "ftp://proxy.example:21", true},
+		{"gopher scheme blocked", "gopher://proxy.example:70", true},
+		{"empty scheme blocked", "proxy.example:8080", true},
+		{"missing host", "http://", true},
+		{"unparseable url", "http://[::1", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateProxyURL(tc.input)
+			if tc.wantErr && err == nil {
+				t.Fatalf("expected error for %q, got nil", tc.input)
+			}
+			if !tc.wantErr && err != nil {
+				t.Fatalf("unexpected error for %q: %v", tc.input, err)
+			}
+		})
+	}
+}
