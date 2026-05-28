@@ -2527,7 +2527,7 @@ func (h *Handler) handleAdminAPI(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if password != config.GetPassword() {
+	if !config.SecureCompareString(password, config.GetPassword()) {
 		w.WriteHeader(401)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Unauthorized"})
 		return
@@ -4777,7 +4777,7 @@ func (h *Handler) apiEventsStream(w http.ResponseWriter, r *http.Request) {
 			password = cookie.Value
 		}
 	}
-	if password != config.GetPassword() {
+	if !config.SecureCompareString(password, config.GetPassword()) {
 		w.WriteHeader(401)
 		return
 	}
