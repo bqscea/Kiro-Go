@@ -2629,35 +2629,16 @@ func (h *Handler) handleAdminAPI(w http.ResponseWriter, r *http.Request) {
 		h.apiGetModelAliases(w, r)
 	case path == "/model-aliases" && r.Method == "POST":
 		h.apiUpdateModelAliases(w, r)
-	case path == "/observe/overview" && r.Method == "GET":
-		h.apiObserveOverview(w, r)
-	case path == "/observe/account-heatmap" && r.Method == "GET":
-		h.apiObserveHeatmap(w, r)
-	case path == "/observe/keys" && r.Method == "GET":
-		h.apiObserveKeys(w, r)
-	case path == "/observe/model-mix" && r.Method == "GET":
-		h.apiObserveModelMix(w, r)
-	case path == "/observe/recent-errors" && r.Method == "GET":
-		h.apiObserveRecentErrors(w, r)
-	case path == "/observe/recent-requests" && r.Method == "GET":
-		h.apiObserveRecentRequests(w, r)
-	case path == "/observe/account-events" && r.Method == "GET":
-		h.apiObserveAccountEvents(w, r)
-	case path == "/alerts" && r.Method == "GET":
-		h.apiAlertsList(w, r)
-	case path == "/alerts" && r.Method == "POST":
-		h.apiAlertsCreate(w, r)
-	case path == "/alerts/history" && r.Method == "GET":
-		h.apiAlertsHistory(w, r)
-	case strings.HasPrefix(path, "/alerts/") && strings.HasSuffix(path, "/test") && r.Method == "POST":
-		id := strings.TrimSuffix(strings.TrimPrefix(path, "/alerts/"), "/test")
-		h.apiAlertsTest(w, r, id)
-	case strings.HasPrefix(path, "/alerts/") && r.Method == "GET":
-		h.apiAlertsGet(w, r, strings.TrimPrefix(path, "/alerts/"))
-	case strings.HasPrefix(path, "/alerts/") && r.Method == "PUT":
-		h.apiAlertsUpdate(w, r, strings.TrimPrefix(path, "/alerts/"))
-	case strings.HasPrefix(path, "/alerts/") && r.Method == "DELETE":
-		h.apiAlertsDelete(w, r, strings.TrimPrefix(path, "/alerts/"))
+	case strings.HasPrefix(path, "/observe/"):
+		if !h.dispatchObserveAPI(w, r, path) {
+			w.WriteHeader(404)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Not Found"})
+		}
+	case path == "/alerts" || strings.HasPrefix(path, "/alerts/"):
+		if !h.dispatchAlertsAPI(w, r, path) {
+			w.WriteHeader(404)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Not Found"})
+		}
 	case path == "/backups" || strings.HasPrefix(path, "/backups/"):
 		if !h.dispatchBackupsAPI(w, r, path) {
 			w.WriteHeader(404)
@@ -2694,6 +2675,58 @@ func (h *Handler) dispatchBackupsAPI(w http.ResponseWriter, r *http.Request, pat
 		h.apiBackupsGet(w, r, strings.TrimPrefix(path, "/backups/"))
 	case strings.HasPrefix(path, "/backups/") && r.Method == "DELETE":
 		h.apiBackupsDelete(w, r, strings.TrimPrefix(path, "/backups/"))
+	default:
+		return false
+	}
+	return true
+}
+
+// dispatchObserveAPI routes /observe/* requests (all GETs).
+func (h *Handler) dispatchObserveAPI(w http.ResponseWriter, r *http.Request, path string) bool {
+	if r.Method != "GET" {
+		return false
+	}
+	switch path {
+	case "/observe/overview":
+		h.apiObserveOverview(w, r)
+	case "/observe/account-heatmap":
+		h.apiObserveHeatmap(w, r)
+	case "/observe/keys":
+		h.apiObserveKeys(w, r)
+	case "/observe/model-mix":
+		h.apiObserveModelMix(w, r)
+	case "/observe/recent-errors":
+		h.apiObserveRecentErrors(w, r)
+	case "/observe/recent-requests":
+		h.apiObserveRecentRequests(w, r)
+	case "/observe/account-events":
+		h.apiObserveAccountEvents(w, r)
+	default:
+		return false
+	}
+	return true
+}
+
+// dispatchAlertsAPI routes /alerts* requests. Order matters:
+// /alerts/history (exact GET) must precede the generic /alerts/{id}
+// GET, and /alerts/{id}/test (POST) must precede other suffix paths.
+func (h *Handler) dispatchAlertsAPI(w http.ResponseWriter, r *http.Request, path string) bool {
+	switch {
+	case path == "/alerts" && r.Method == "GET":
+		h.apiAlertsList(w, r)
+	case path == "/alerts" && r.Method == "POST":
+		h.apiAlertsCreate(w, r)
+	case path == "/alerts/history" && r.Method == "GET":
+		h.apiAlertsHistory(w, r)
+	case strings.HasPrefix(path, "/alerts/") && strings.HasSuffix(path, "/test") && r.Method == "POST":
+		id := strings.TrimSuffix(strings.TrimPrefix(path, "/alerts/"), "/test")
+		h.apiAlertsTest(w, r, id)
+	case strings.HasPrefix(path, "/alerts/") && r.Method == "GET":
+		h.apiAlertsGet(w, r, strings.TrimPrefix(path, "/alerts/"))
+	case strings.HasPrefix(path, "/alerts/") && r.Method == "PUT":
+		h.apiAlertsUpdate(w, r, strings.TrimPrefix(path, "/alerts/"))
+	case strings.HasPrefix(path, "/alerts/") && r.Method == "DELETE":
+		h.apiAlertsDelete(w, r, strings.TrimPrefix(path, "/alerts/"))
 	default:
 		return false
 	}
