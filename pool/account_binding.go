@@ -52,14 +52,27 @@ func (p *AccountPool) bindClient(clientIP, accountID string) {
 		// 解绑旧客户端
 		delete(p.clientBindings, oldClient)
 		delete(p.bindingLastSeen, oldClient)
-		logger.Debugf("[AccountBinding] Unbound old client from account", )
+		logger.Debugf("[AccountBinding] Unbound old client %s from account %s", oldClient, accountID)
 	}
 
 	// 绑定新客户端
 	p.clientBindings[clientIP] = accountID
 	p.accountBindings[accountID] = clientIP
 	p.bindingLastSeen[clientIP] = time.Now()
-	logger.Debugf("[AccountBinding] Bound client to account")
+	logger.Debugf("[AccountBinding] Bound client %s to account %s", clientIP, accountID)
+}
+
+// unbindAccountLocked removes the client binding for an account.
+// Caller must hold p.mu.
+func (p *AccountPool) unbindAccountLocked(accountID string) {
+	clientIP, exists := p.accountBindings[accountID]
+	if !exists {
+		return
+	}
+	delete(p.accountBindings, accountID)
+	delete(p.clientBindings, clientIP)
+	delete(p.bindingLastSeen, clientIP)
+	logger.Debugf("[AccountBinding] Unbound client %s from unavailable account %s", clientIP, accountID)
 }
 
 // unbindClient 解绑客户端

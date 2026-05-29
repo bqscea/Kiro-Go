@@ -61,6 +61,10 @@ func GetPool() *AccountPool {
 	return pool
 }
 
+func canFallbackToCooldown(cooldown, now time.Time) bool {
+	return !cooldown.After(now.Add(accountReservationDuration))
+}
+
 // Reload 从配置重新加载账号
 // 构建加权列表：weight<=1 出现 1 次，weight>=2 出现 weight 次
 func (p *AccountPool) Reload() {
@@ -166,6 +170,9 @@ func (p *AccountPool) getNextPriority() *config.Account {
 			continue
 		}
 		if cooldown, ok := p.cooldowns[acc.ID]; ok {
+			if !canFallbackToCooldown(cooldown, now) {
+				continue
+			}
 			if best == nil || cooldown.Before(earliest) {
 				best = acc
 				earliest = cooldown
@@ -239,6 +246,9 @@ func (p *AccountPool) getNextBalanced() *config.Account {
 			continue
 		}
 		if cooldown, ok := p.cooldowns[acc.ID]; ok {
+			if !canFallbackToCooldown(cooldown, now) {
+				continue
+			}
 			if best == nil || cooldown.Before(earliest) {
 				best = acc
 				earliest = cooldown
@@ -400,6 +410,9 @@ func (p *AccountPool) GetNextForModel(model string, clientIP string) *config.Acc
 			continue
 		}
 		if cooldown, ok := p.cooldowns[acc.ID]; ok {
+			if !canFallbackToCooldown(cooldown, now) {
+				continue
+			}
 			if best == nil || cooldown.Before(earliest) {
 				best = acc
 				earliest = cooldown
@@ -471,6 +484,9 @@ func (p *AccountPool) getNextPriorityForModel(model string) *config.Account {
 			continue
 		}
 		if cooldown, ok := p.cooldowns[acc.ID]; ok {
+			if !canFallbackToCooldown(cooldown, now) {
+				continue
+			}
 			if best == nil || cooldown.Before(earliest) {
 				best = &uniqueAccounts[i]
 				earliest = cooldown
@@ -546,6 +562,9 @@ func (p *AccountPool) getNextPriorityForModelAndGroups(model string, allowedGrou
 			continue
 		}
 		if cooldown, ok := p.cooldowns[acc.ID]; ok {
+			if !canFallbackToCooldown(cooldown, now) {
+				continue
+			}
 			if best == nil || cooldown.Before(earliest) {
 				best = &uniqueAccounts[i]
 				earliest = cooldown
@@ -607,9 +626,11 @@ func (p *AccountPool) RecordError(id string, isQuotaError bool) int {
 		// 配额错误，冷却至重置日期
 		cooldownUntil := p.calculateQuotaCooldown(id)
 		p.cooldowns[id] = cooldownUntil
+		p.unbindAccountLocked(id)
 	} else if count >= 3 {
 		// 连续 3 次错误，冷却 1 分钟
 		p.cooldowns[id] = time.Now().Add(time.Minute)
+		p.unbindAccountLocked(id)
 	}
 	p.mu.Unlock()
 
@@ -998,6 +1019,9 @@ func (p *AccountPool) GetNextForModelAndGroupsExcluding(model string, allowedGro
 			continue
 		}
 		if cooldown, ok := p.cooldowns[acc.ID]; ok {
+			if !canFallbackToCooldown(cooldown, now) {
+				continue
+			}
 			if best == nil || cooldown.Before(earliest) {
 				best = acc
 				earliest = cooldown

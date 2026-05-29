@@ -111,3 +111,23 @@ func TestGetNextForModelAndGroupsExcludingSkipsFailedAccount(t *testing.T) {
 		t.Fatalf("expected healthy account, got %q", got.ID)
 	}
 }
+
+func TestGetNextForModelAndGroupsExcludingSkipsLongCooldownFallback(t *testing.T) {
+	if err := config.Init(filepath.Join(t.TempDir(), "config.json")); err != nil {
+		t.Fatalf("init config: %v", err)
+	}
+	p := &AccountPool{
+		cooldowns:       make(map[string]time.Time),
+		modelLists:      make(map[string]map[string]bool),
+		clientBindings:  make(map[string]string),
+		bindingLastSeen: make(map[string]time.Time),
+	}
+	p.accounts = []config.Account{{ID: "quota-hit", Enabled: true}}
+	p.modelLists["quota-hit"] = map[string]bool{"claude-sonnet-4.5": true}
+	p.cooldowns["quota-hit"] = time.Now().Add(time.Hour)
+
+	got := p.GetNextForModelAndGroupsExcluding("claude-sonnet-4.5", nil, nil, "")
+	if got != nil {
+		t.Fatalf("expected long-cooldown account to be skipped, got %q", got.ID)
+	}
+}
