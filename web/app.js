@@ -2507,6 +2507,13 @@
       '<div class="form-group"><label>' + escapeHtml(t('credentials.label')) + '</label>' +
       '<textarea id="credJson" class="font-mono" placeholder=\'[{"refreshToken":"xxx","provider":"BuilderID"}]\'></textarea>' +
       '</div>' +
+      '<div class="form-group" style="margin-top:12px">' +
+      '<label style="display:flex;align-items:center;cursor:pointer;user-select:none">' +
+      '<input type="checkbox" id="importStandbyCheckbox" style="margin-right:8px">' +
+      '<span data-i18n="import.standbyMode"></span>' +
+      '<span style="margin-left:8px;font-size:12px;color:#64748b;font-weight:normal" data-i18n="import.standbyHint"></span>' +
+      '</label>' +
+      '</div>' +
       '<div class="modal-footer">' +
       '<button class="btn btn-secondary" data-modal-goto="add" type="button">' + escapeHtml(t('common.back')) + '</button>' +
       '<button class="btn btn-primary" id="importCredBtn" type="button">' + escapeHtml(t('common.add')) + '</button>' +
@@ -2602,6 +2609,7 @@
         items = Array.isArray(json) ? json : [json];
       }
       let ok = 0, fail = 0, newIds = [];
+      const standbyMode = $('importStandbyCheckbox')?.checked || false;
       for (const item of items) {
         if (!item.refreshToken) { fail++; continue; }
         let authMethod = item.authMethod || '';
@@ -2617,7 +2625,8 @@
           clientId: item.clientId || '',
           clientSecret: item.clientSecret || '',
           authMethod, provider,
-          region: item.region || 'us-east-1'
+          region: item.region || 'us-east-1',
+          standby: standbyMode
         };
         try {
           const res = await api('/auth/credentials', { method: 'POST', body: JSON.stringify(payload) });
