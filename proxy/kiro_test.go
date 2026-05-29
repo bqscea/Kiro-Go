@@ -2,10 +2,14 @@ package proxy
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/json"
+	"io"
+	"kiro-go/config"
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 )
@@ -203,6 +207,66 @@ func TestInitKiroHttpClientKeepsShortRestTimeout(t *testing.T) {
 	}
 	if restClient.Timeout != 30*time.Second {
 		t.Fatalf("expected REST timeout to stay 30s, got %s", restClient.Timeout)
+	}
+}
+
+func TestCallKiroAPIContinuesWhenProfileArnUnavailable(t *testing.T) {
+	configPath := t.TempDir() + "/config.json"
+	if err := config.Init(configPath); err != nil {
+		t.Fatalf("init config: %v", err)
+	}
+	if err := config.UpdatePreferredEndpoint("kiro"); err != nil {
+		t.Fatalf("set endpoint: %v", err)
+	}
+	if err := config.UpdateEndpointFallback(false); err != nil {
+		t.Fatalf("set fallback: %v", err)
+	}
+
+	var streamCalled bool
+	kiroRestHttpStore.Store(&http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if req.URL.Path != "/ListAvailableProfiles" {
+				t.Fatalf("unexpected REST path: %s", req.URL.Path)
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(`{"profiles":[]}`)),
+				Header:     make(http.Header),
+			}, nil
+		}),
+	})
+	kiroHttpStore.Store(&http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			streamCalled = true
+			var payload KiroPayload
+			if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+				t.Fatalf("decode payload: %v", err)
+			}
+			if payload.ProfileArn != "" {
+				t.Fatalf("expected request to continue without profile ARN, got %q", payload.ProfileArn)
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(bytes.NewReader(nil)),
+				Header:     make(http.Header),
+			}, nil
+		}),
+	})
+	t.Cleanup(func() { InitKiroHttpClient("") })
+
+	payload := &KiroPayload{}
+	payload.ConversationState.CurrentMessage.UserInputMessage.Origin = "AI_EDITOR"
+	account := &config.Account{
+		ID:          "acct-no-profile",
+		Email:       "user@example.com",
+		AccessToken: "access-token",
+		Region:      "us-east-1",
+	}
+	if err := CallKiroAPI(context.Background(), account, payload, nil); err != nil {
+		t.Fatalf("expected request to continue without profile ARN, got %v", err)
+	}
+	if !streamCalled {
+		t.Fatalf("expected streaming request after profile resolution failed")
 	}
 }
 

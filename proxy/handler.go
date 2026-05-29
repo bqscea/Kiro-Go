@@ -430,16 +430,16 @@ func matchedApiKeyEntry(r *http.Request) *config.ApiKeyEntry {
 // validateApiKey 验证 API Key（仅校验，不返回 group 限制）。
 // 命中多 Key 表时把 entry 写入 r.Context，便于下游做限流 / 统计。
 func (h *Handler) validateApiKey(r *http.Request) bool {
-	if !config.IsApiKeyRequired() {
-		return true
-	}
-
 	provided := extractProvidedKey(r)
 
 	// 多 Key 表优先匹配
 	if entry := config.FindApiKeyEntry(provided); entry != nil {
 		ctx := context.WithValue(r.Context(), apiKeyCtxKey{}, entry)
 		*r = *r.WithContext(ctx)
+		return true
+	}
+
+	if !config.IsApiKeyRequired() {
 		return true
 	}
 
@@ -468,11 +468,7 @@ func (h *Handler) enforceRateLimit(r *http.Request) (bool, string) {
 // resolveAllowedGroups 返回当前请求允许使用的账号分组白名单。
 // 返回 nil 表示不限制（旧版 ApiKey 或未启用鉴权）。
 func (h *Handler) resolveAllowedGroups(r *http.Request) []string {
-	if !config.IsApiKeyRequired() {
-		return nil
-	}
-	provided := extractProvidedKey(r)
-	if entry := config.FindApiKeyEntry(provided); entry != nil {
+	if entry := matchedApiKeyEntry(r); entry != nil {
 		// 空 groups 或包含 "*" → 不限制
 		if len(entry.Groups) == 0 {
 			return nil
@@ -1072,6 +1068,7 @@ func (h *Handler) handleCountTokens(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	limitBody(w, r, MaxChatBodyBytes)
 	defer r.Body.Close()
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -1115,6 +1112,7 @@ func (h *Handler) handleClaudeMessagesInternal(w http.ResponseWriter, r *http.Re
 	}
 
 	// 读取请求
+	limitBody(w, r, MaxChatBodyBytes)
 	defer r.Body.Close()
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -1550,7 +1548,7 @@ func (h *Handler) handleClaudeStream(w http.ResponseWriter, r *http.Request, acc
 		},
 	}
 
-	err := CallKiroAPI(account, payload, callback)
+	err := CallKiroAPI(r.Context(), account, payload, callback)
 	if err != nil {
 		h.recordFailure()
 		getObserveStore().RecordFailure(account.ID, model)
@@ -1697,6 +1695,26 @@ func (h *Handler) recordApiKeyUsage(r *http.Request, tokens int, credits float64
 	go config.UpdateApiKeyStats(entry.ID, 1, tokens, credits, time.Now().Unix())
 }
 
+func validateProxyURL(raw string) error {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("invalid proxyURL: %w", err)
+	}
+	switch strings.ToLower(u.Scheme) {
+	case "http", "https", "socks5", "socks5h":
+	default:
+		return fmt.Errorf("proxyURL must start with http://, https://, socks5://, or socks5h://")
+	}
+	if u.Host == "" {
+		return fmt.Errorf("proxyURL host is required")
+	}
+	return nil
+}
+
 // 统计记录 (使用原子操作)
 func (h *Handler) recordSuccess(inputTokens, outputTokens int, credits float64) {
 	atomic.AddInt64(&h.totalRequests, 1)
@@ -1831,7 +1849,7 @@ func (h *Handler) handleClaudeNonStream(w http.ResponseWriter, r *http.Request, 
 		},
 	}
 
-	err := CallKiroAPI(account, payload, callback)
+	err := CallKiroAPI(r.Context(), account, payload, callback)
 	if err != nil {
 		h.recordFailure()
 		getObserveStore().RecordFailure(account.ID, model)
@@ -1925,6 +1943,7 @@ func (h *Handler) handleOpenAIChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	limitBody(w, r, MaxChatBodyBytes)
 	defer r.Body.Close()
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -2297,7 +2316,7 @@ func (h *Handler) handleOpenAIStream(w http.ResponseWriter, r *http.Request, acc
 		},
 	}
 
-	err := CallKiroAPI(account, payload, callback)
+	err := CallKiroAPI(r.Context(), account, payload, callback)
 	if err != nil {
 		h.recordFailure()
 		getObserveStore().RecordFailure(account.ID, model)
@@ -2400,7 +2419,7 @@ func (h *Handler) handleOpenAINonStream(w http.ResponseWriter, r *http.Request, 
 		},
 	}
 
-	err := CallKiroAPI(account, payload, callback)
+	err := CallKiroAPI(r.Context(), account, payload, callback)
 	if err != nil {
 		h.recordFailure()
 		getObserveStore().RecordFailure(account.ID, model)
@@ -2626,12 +2645,6 @@ func (h *Handler) apiAddAccount(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&account); err != nil {
 		w.WriteHeader(400)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid JSON"})
-		return
-	}
-
-	if err := validateProxyURL(account.ProxyURL); err != nil {
-		w.WriteHeader(400)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 
@@ -3687,7 +3700,7 @@ func (h *Handler) apiTestAccount(w http.ResponseWriter, r *http.Request, id stri
 		OnContextUsage: func(pct float64) {},
 	}
 
-	err := CallKiroAPI(account, kiroPayload, callback)
+	err := CallKiroAPI(r.Context(), account, kiroPayload, callback)
 	if err != nil {
 		w.WriteHeader(500)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
@@ -4125,32 +4138,6 @@ func (h *Handler) apiGetProxy(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{
 		"proxyURL": config.GetProxyURL(),
 	})
-}
-
-// allowedProxySchemes is the closed set of URL schemes an admin may set
-// for any outbound-proxy field (global or per-account). Anything else is
-// rejected — file://, ftp://, gopher://, etc. would all turn the proxy
-// hop into an unintended SSRF / exfiltration channel.
-var allowedProxySchemes = []string{"http", "https", "socks5", "socks5h"}
-
-// validateProxyURL accepts an empty string (meaning "no proxy"), otherwise
-// requires a well-formed URL with one of allowedProxySchemes and a
-// non-empty host. Returns nil if the value is safe to persist.
-func validateProxyURL(raw string) error {
-	if raw == "" {
-		return nil
-	}
-	u, err := url.Parse(raw)
-	if err != nil {
-		return fmt.Errorf("proxyURL is not a valid URL: %w", err)
-	}
-	if !slices.Contains(allowedProxySchemes, u.Scheme) {
-		return fmt.Errorf("proxyURL scheme %q not allowed (use one of: %s)", u.Scheme, strings.Join(allowedProxySchemes, ", "))
-	}
-	if u.Host == "" {
-		return fmt.Errorf("proxyURL is missing a host")
-	}
-	return nil
 }
 
 // apiUpdateProxy 更新代理配置并立即生效

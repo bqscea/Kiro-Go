@@ -97,6 +97,8 @@ func (h *Handler) apiBackupsDelete(w http.ResponseWriter, r *http.Request, id st
 
 // apiBackupsRestoreUpload POST /admin/api/backups/restore (multipart or raw JSON body)
 func (h *Handler) apiBackupsRestoreUpload(w http.ResponseWriter, r *http.Request) {
+	// admin 入口默认 256KiB 太紧；备份文件可达数十 MiB，重置到 64MiB。
+	limitBody(w, r, MaxBackupUploadBytes)
 	var data []byte
 	var note string
 	ct := r.Header.Get("Content-Type")

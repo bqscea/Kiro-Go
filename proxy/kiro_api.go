@@ -142,6 +142,9 @@ func warmAccountProfileArn(account *config.Account) error {
 		account.ProfileArn = profileArn
 		return nil
 	}
+	if err != nil && isBuilderIDUnsupportedProfileError(err) {
+		return nil
+	}
 
 	if account.RefreshToken != "" {
 		_, _, _, refreshedArn, refreshErr := auth.RefreshToken(account)
@@ -155,6 +158,14 @@ func warmAccountProfileArn(account *config.Account) error {
 	}
 
 	return fmt.Errorf("no available Kiro profile")
+}
+
+func isBuilderIDUnsupportedProfileError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "builder id is not supported")
 }
 
 func listAvailableProfiles(account *config.Account) (string, error) {

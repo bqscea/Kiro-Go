@@ -89,6 +89,35 @@ func TestResolveProfileArnFetchesAndCachesProfile(t *testing.T) {
 	}
 }
 
+func TestWarmAccountProfileArnIgnoresBuilderIDUnsupportedProfiles(t *testing.T) {
+	kiroRestHttpStore.Store(&http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if req.URL.Path != "/ListAvailableProfiles" {
+				t.Fatalf("expected ListAvailableProfiles path, got %s", req.URL.Path)
+			}
+			return &http.Response{
+				StatusCode: http.StatusForbidden,
+				Body:       io.NopCloser(strings.NewReader(`{"message":"AWS Builder ID is not supported for this operation.","reason":null}`)),
+				Header:     make(http.Header),
+			}, nil
+		}),
+	})
+	t.Cleanup(func() { InitKiroHttpClient("") })
+
+	account := &config.Account{
+		ID:          "acct-builderid",
+		Email:       "user@example.com",
+		AccessToken: "access-token",
+		Provider:    "BuilderId",
+	}
+	if err := warmAccountProfileArn(account); err != nil {
+		t.Fatalf("expected Builder ID unsupported profile lookup to be skipped, got %v", err)
+	}
+	if account.ProfileArn != "" {
+		t.Fatalf("expected profile ARN to remain empty, got %q", account.ProfileArn)
+	}
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {

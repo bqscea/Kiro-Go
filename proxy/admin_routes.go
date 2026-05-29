@@ -52,6 +52,12 @@ func (h *Handler) handleAdminAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 默认对所有 admin 写请求加 256KiB body 上限，防止 io.ReadAll OOM。
+	// 大上传端点（如备份恢复）在自己的 handler 内再 limitBody 抬高。
+	if r.Method == "POST" || r.Method == "PUT" || r.Method == "DELETE" || r.Method == "PATCH" {
+		limitBody(w, r, MaxAdminBodyBytes)
+	}
+
 	path := strings.TrimPrefix(r.URL.Path, "/admin/api")
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 

@@ -4,6 +4,7 @@ package proxy
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -308,7 +309,9 @@ func getSortedEndpoints(account *config.Account, preferred string) []kiroEndpoin
 }
 
 // CallKiroAPI calls the Kiro streaming API, trying each configured endpoint with automatic fallback.
-func CallKiroAPI(account *config.Account, payload *KiroPayload, callback *KiroStreamCallback) error {
+// ctx is bound to every outbound HTTP request so a client disconnect / shutdown cancels
+// in-flight upstream calls and releases the goroutine instead of leaking it on the wire.
+func CallKiroAPI(ctx context.Context, account *config.Account, payload *KiroPayload, callback *KiroStreamCallback) error {
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
 		return err
@@ -333,12 +336,17 @@ func CallKiroAPI(account *config.Account, payload *KiroPayload, callback *KiroSt
 	if payload != nil && strings.TrimSpace(payload.ProfileArn) == "" && account != nil {
 		profileArn, err := ResolveProfileArn(account)
 		if err != nil {
-			return err
-		}
-		payload.ProfileArn = profileArn
-		payloadJSON, err = json.Marshal(payload)
-		if err != nil {
-			return err
+			accountEmail := "<nil>"
+			if account != nil {
+				accountEmail = account.Email
+			}
+			logger.Warnf("[ProfileArn] Failed to resolve profile ARN for %s: %v", accountEmail, err)
+		} else {
+			payload.ProfileArn = profileArn
+			payloadJSON, err = json.Marshal(payload)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -356,7 +364,7 @@ func CallKiroAPI(account *config.Account, payload *KiroPayload, callback *KiroSt
 			}
 		}
 
-		req, err := http.NewRequest("POST", ep.URL, bytes.NewReader(payloadJSON))
+		req, err := http.NewRequestWithContext(ctx, "POST", ep.URL, bytes.NewReader(payloadJSON))
 		if err != nil {
 			lastErr = err
 			continue
