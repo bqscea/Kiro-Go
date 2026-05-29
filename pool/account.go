@@ -29,6 +29,7 @@ type AccountPool struct {
 	clientBindings  map[string]string          // clientIP:Port → accountID（会话级绑定）
 	accountBindings map[string]string          // accountID → clientIP:Port（反向映射，确保一账号一客户端）
 	bindingLastSeen map[string]time.Time       // clientIP:Port → 最后请求时间（30分钟无请求则解绑）
+	circuitBreaker  *CircuitBreaker            // 熔断器，防止重试风暴
 }
 
 var (
@@ -46,6 +47,7 @@ func GetPool() *AccountPool {
 			clientBindings:  make(map[string]string),
 			accountBindings: make(map[string]string),
 			bindingLastSeen: make(map[string]time.Time),
+			circuitBreaker:  NewCircuitBreaker(),
 		}
 		pool.Reload()
 		// 加载持久化的冷却状态
@@ -588,6 +590,11 @@ func (p *AccountPool) RecordSuccess(id string) {
 	defer p.mu.Unlock()
 	delete(p.cooldowns, id)
 	p.errorCounts[id] = 0
+
+	// 通知熔断器成功
+	if p.circuitBreaker != nil {
+		p.circuitBreaker.RecordSuccess()
+	}
 }
 
 // RecordError 记录请求错误，设置冷却
@@ -605,6 +612,11 @@ func (p *AccountPool) RecordError(id string, isQuotaError bool) int {
 		p.cooldowns[id] = time.Now().Add(time.Minute)
 	}
 	p.mu.Unlock()
+
+	// 通知熔断器失败
+	if p.circuitBreaker != nil {
+		p.circuitBreaker.RecordFailure()
+	}
 
 	// 异步保存冷却状态（避免阻塞请求路径）
 	go func() {

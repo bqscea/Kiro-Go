@@ -60,7 +60,18 @@ func main() {
 	}
 
 	// 初始化账号池
-	pool.GetPool()
+	accountPool := pool.GetPool()
+
+	// 注册配置热更新回调
+	config.OnReload(func() {
+		logger.Infof("[HotReload] Reloading account pool")
+		accountPool.Reload()
+	})
+
+	// 启动配置文件监控（可选，通过环境变量控制）
+	if os.Getenv("ENABLE_CONFIG_WATCHER") == "true" {
+		config.StartWatcher()
+	}
 
 	// 创建 HTTP 处理器（包含后台刷新任务）
 	handler := proxy.NewHandler()
