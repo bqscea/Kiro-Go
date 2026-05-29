@@ -89,14 +89,14 @@ func (p *AccountPool) GetNext(clientIP string) *config.Account {
 	// 优先返回已绑定的账号
 	if clientIP != "" {
 		if boundAccountID := p.getBoundAccount(clientIP); boundAccountID != "" {
-			logger.Infof("[AccountBinding] Client %s has bound account %s, checking availability", clientIP, boundAccountID)
+			logger.Debugf("[AccountBinding] Client %s has bound account, checking availability", clientIP)
 			if acc := p.tryGetBoundAccount(boundAccountID, clientIP); acc != nil {
 				p.updateClientActivity(clientIP)
-				logger.Infof("[AccountBinding] Reusing bound account %s for client %s", acc.ID, clientIP)
+				logger.Debugf("[AccountBinding] Reusing bound account for client %s", clientIP)
 				return acc
 			}
 			// 绑定的账号不可用，解绑
-			logger.Infof("[AccountBinding] Bound account %s unavailable for client %s, unbinding", boundAccountID, clientIP)
+			logger.Debugf("[AccountBinding] Bound account unavailable for client %s, unbinding", clientIP)
 			p.unbindClient(clientIP)
 		}
 	}
@@ -112,7 +112,7 @@ func (p *AccountPool) GetNext(clientIP string) *config.Account {
 	// 绑定新账号到客户端
 	if acc != nil && clientIP != "" {
 		p.bindClient(clientIP, acc.ID)
-		logger.Infof("[AccountBinding] New binding: client %s -> account %s (email: %s)", clientIP, acc.ID, acc.Email)
+		logger.Infof("[AccountBinding] New binding: client %s -> account %s", clientIP, acc.ID)
 	}
 	return acc
 }

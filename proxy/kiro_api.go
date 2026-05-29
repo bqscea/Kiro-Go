@@ -137,7 +137,7 @@ func warmAccountProfileArn(account *config.Account) error {
 	profileArn, err := listAvailableProfiles(account)
 	if err == nil && profileArn != "" {
 		if updateErr := config.UpdateAccountProfileArn(account.ID, profileArn); updateErr != nil {
-			logger.Warnf("[ProfileArn] Failed to cache profile ARN for %s: %v", account.Email, updateErr)
+			logger.Warnf("[ProfileArn] Failed to cache profile ARN for account: %v", updateErr)
 		}
 		account.ProfileArn = profileArn
 		return nil
@@ -150,7 +150,7 @@ func warmAccountProfileArn(account *config.Account) error {
 		_, _, _, refreshedArn, refreshErr := auth.RefreshToken(account)
 		if refreshErr == nil && refreshedArn != "" {
 			if updateErr := config.UpdateAccountProfileArn(account.ID, refreshedArn); updateErr != nil {
-				logger.Warnf("[ProfileArn] Failed to cache profile ARN for %s: %v", account.Email, updateErr)
+				logger.Warnf("[ProfileArn] Failed to cache profile ARN for account: %v", updateErr)
 			}
 			account.ProfileArn = refreshedArn
 			return nil
@@ -235,7 +235,7 @@ func RefreshAccountInfo(account *config.Account) (*config.AccountInfo, error) {
 	_, modelsErr := ListAvailableModels(account)
 	if modelsErr != nil {
 		// 模型不可用，标记封禁
-		logger.Warnf("[RefreshAccountInfo] Account %s models unavailable: %v", account.Email, modelsErr)
+		logger.Warnf("[RefreshAccountInfo] Account models unavailable: %v", modelsErr)
 
 		updatedAccount := *account
 		updatedAccount.Enabled = false
@@ -252,7 +252,7 @@ func RefreshAccountInfo(account *config.Account) (*config.AccountInfo, error) {
 
 	// 模型可用，如果之前被封禁则清除封禁状态
 	if account.BanStatus != "" && account.BanStatus != "ACTIVE" {
-		logger.Infof("[RefreshAccountInfo] Account %s models accessible, clearing ban status", account.Email)
+		logger.Infof("[RefreshAccountInfo] Account models accessible, clearing ban status")
 
 		updatedAccount := *account
 		updatedAccount.BanStatus = "ACTIVE"

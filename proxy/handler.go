@@ -356,12 +356,12 @@ func (h *Handler) refreshAllAccounts() {
 		}
 
 		if err := h.refreshAccountToken(account, false); err != nil {
-			logger.Warnf("[BackgroundRefresh] Token refresh failed for %s: %v", account.Email, err)
+			logger.Warnf("[BackgroundRefresh] Token refresh failed for account: %v", err)
 		}
 
 		if strings.TrimSpace(account.ProfileArn) == "" {
 			if err := warmAccountProfileArn(account); err != nil {
-				logger.Debugf("[ProfileArn] Warm-up skipped for %s: %v", account.Email, err)
+				logger.Debugf("[ProfileArn] Warm-up skipped for account: %v", err)
 			}
 		}
 
@@ -373,7 +373,7 @@ func (h *Handler) refreshAllAccounts() {
 		// 刷新账户信息
 		info, err := RefreshAccountInfo(account)
 		if err != nil {
-			logger.Warnf("[BackgroundRefresh] Failed to refresh %s: %v", account.Email, err)
+			logger.Warnf("[BackgroundRefresh] Failed to refresh account: %v", err)
 			continue
 		}
 
@@ -382,7 +382,7 @@ func (h *Handler) refreshAllAccounts() {
 		nowExhausted := info.UsageLimit > 0 && info.UsageCurrent >= info.UsageLimit
 
 		config.UpdateAccountInfo(account.ID, *info)
-		logger.Infof("[BackgroundRefresh] Refreshed %s: %s %.1f/%.1f", account.Email, info.SubscriptionType, info.UsageCurrent, info.UsageLimit)
+		logger.Infof("[BackgroundRefresh] Refreshed account: %s %.1f/%.1f", info.SubscriptionType, info.UsageCurrent, info.UsageLimit)
 
 		// 从耗尽恢复：清零 ExhaustedTime
 		if wasExhausted && !nowExhausted && account.ExhaustedTime > 0 {
@@ -848,18 +848,18 @@ func (h *Handler) refreshModelsCache() {
 			defer func() { <-sem }()
 
 			if err := h.ensureValidToken(acc); err != nil {
-				logger.Warnf("[ModelsCache] Skip %s token refresh failed: %v", acc.Email, err)
+				logger.Warnf("[ModelsCache] Skip account token refresh failed: %v", err)
 				return
 			}
 
 			models, err := ListAvailableModels(acc)
 			if err != nil {
-				logger.Warnf("[ModelsCache] Failed to refresh for %s: %v", acc.Email, err)
+				logger.Warnf("[ModelsCache] Failed to refresh for account: %v", err)
 
 				// 检测 403 封禁状态，自动禁用账号
 				errMsg := err.Error()
 				if strings.Contains(errMsg, "403") && (strings.Contains(errMsg, "temporarily is suspended") || strings.Contains(errMsg, "temporarily suspended")) {
-					logger.Warnf("[ModelsCache] Account %s is suspended, auto-disabling", acc.Email)
+					logger.Warnf("[ModelsCache] Account is suspended, auto-disabling")
 
 					updatedAccount := *acc
 					updatedAccount.Enabled = false
@@ -910,7 +910,7 @@ func (h *Handler) fetchAndCacheAccountModels(account *config.Account) error {
 		// 检测 403 封禁状态，自动禁用账号
 		errMsg := err.Error()
 		if strings.Contains(errMsg, "403") && (strings.Contains(errMsg, "temporarily is suspended") || strings.Contains(errMsg, "temporarily suspended")) {
-			logger.Warnf("[fetchAndCacheAccountModels] Account %s is suspended, auto-disabling", account.Email)
+			logger.Warnf("[fetchAndCacheAccountModels] Account is suspended, auto-disabling")
 
 			updatedAccount := *account
 			updatedAccount.Enabled = false
@@ -939,7 +939,7 @@ func (h *Handler) fetchAndCacheAccountModels(account *config.Account) error {
 	h.modelsCacheTime = time.Now().Unix()
 	h.modelsCacheMu.Unlock()
 
-	logger.Infof("[ModelsCache] Refreshed %d models for account %s", len(models), account.Email)
+	logger.Infof("[ModelsCache] Refreshed %d models for account", len(models))
 	return nil
 }
 
@@ -1712,6 +1712,38 @@ func validateProxyURL(raw string) error {
 	if u.Host == "" {
 		return fmt.Errorf("proxyURL host is required")
 	}
+
+	// SSRF protection: block private IP ranges
+	host := u.Hostname()
+	if host == "" {
+		return fmt.Errorf("proxyURL host is required")
+	}
+
+	// Block localhost variants
+	if host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "0.0.0.0" {
+		return fmt.Errorf("proxyURL cannot target localhost")
+	}
+
+	// Block private IP ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16)
+	if strings.HasPrefix(host, "10.") ||
+		strings.HasPrefix(host, "192.168.") ||
+		strings.HasPrefix(host, "169.254.") ||
+		(strings.HasPrefix(host, "172.") && len(host) > 4) {
+		// Check 172.16-31.x.x range
+		if strings.HasPrefix(host, "172.") {
+			parts := strings.Split(host, ".")
+			if len(parts) >= 2 {
+				var second int
+				fmt.Sscanf(parts[1], "%d", &second)
+				if second >= 16 && second <= 31 {
+					return fmt.Errorf("proxyURL cannot target private IP ranges")
+				}
+			}
+		} else {
+			return fmt.Errorf("proxyURL cannot target private IP ranges")
+		}
+	}
+
 	return nil
 }
 
@@ -2691,7 +2723,7 @@ func (h *Handler) apiAddAccount(w http.ResponseWriter, r *http.Request) {
 	if account.Enabled && account.AccessToken != "" {
 		go func(acc config.Account) {
 			if err := h.fetchAndCacheAccountModels(&acc); err != nil {
-				logger.Warnf("[ModelsCache] Auto-refresh failed for new account %s: %v", acc.Email, err)
+				logger.Warnf("[ModelsCache] Auto-refresh failed for new account: %v", err)
 			}
 		}(account)
 	}
@@ -2820,7 +2852,7 @@ func (h *Handler) apiUpdateAccount(w http.ResponseWriter, r *http.Request, id st
 	if !oldEnabled && existing.Enabled && existing.AccessToken != "" {
 		go func(acc config.Account) {
 			if err := h.fetchAndCacheAccountModels(&acc); err != nil {
-				logger.Warnf("[ModelsCache] Auto-refresh failed for re-enabled account %s: %v", acc.Email, err)
+				logger.Warnf("[ModelsCache] Auto-refresh failed for re-enabled account: %v", err)
 			}
 		}(*existing)
 	}
@@ -3759,7 +3791,7 @@ func (h *Handler) refreshAccountInfoAsync(accountID string) {
 	// 刷新账户信息
 	info, err := RefreshAccountInfo(account)
 	if err != nil {
-		logger.Warnf("[RefreshAccountInfoAsync] Failed to refresh %s: %v", account.Email, err)
+		logger.Warnf("[RefreshAccountInfoAsync] Failed to refresh account: %v", err)
 		return
 	}
 
@@ -3768,7 +3800,7 @@ func (h *Handler) refreshAccountInfoAsync(accountID string) {
 	nowExhausted := info.UsageLimit > 0 && info.UsageCurrent >= info.UsageLimit
 
 	config.UpdateAccountInfo(accountID, *info)
-	logger.Infof("[RefreshAccountInfoAsync] Refreshed %s: %s %.1f/%.1f", account.Email, info.SubscriptionType, info.UsageCurrent, info.UsageLimit)
+	logger.Infof("[RefreshAccountInfoAsync] Refreshed account: %s %.1f/%.1f", info.SubscriptionType, info.UsageCurrent, info.UsageLimit)
 
 	// 从耗尽恢复：清零 ExhaustedTime
 	if wasExhausted && !nowExhausted && account.ExhaustedTime > 0 {
@@ -3984,7 +4016,7 @@ func (h *Handler) apiGetAccountModels(w http.ResponseWriter, r *http.Request, id
 		// 检测 403 封禁状态，自动禁用账号
 		errMsg := err.Error()
 		if strings.Contains(errMsg, "403") && (strings.Contains(errMsg, "temporarily is suspended") || strings.Contains(errMsg, "temporarily suspended")) {
-			logger.Warnf("[apiRefreshAccountModels] Account %s is suspended, auto-disabling", account.Email)
+			logger.Warnf("[apiRefreshAccountModels] Account is suspended, auto-disabling")
 
 			updatedAccount := *account
 			updatedAccount.Enabled = false

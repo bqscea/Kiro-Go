@@ -17,15 +17,26 @@ func (p *AccountPool) cleanupExpiredBindings() {
 	for range ticker.C {
 		p.mu.Lock()
 		now := time.Now()
+		expiredClients := make([]string, 0)
 		for clientIP, lastSeen := range p.bindingLastSeen {
 			if now.Sub(lastSeen) > clientBindingExpiry {
-				// 清理反向映射
-				if accountID, exists := p.clientBindings[clientIP]; exists {
-					delete(p.accountBindings, accountID)
-				}
-				delete(p.clientBindings, clientIP)
-				delete(p.bindingLastSeen, clientIP)
+				expiredClients = append(expiredClients, clientIP)
 			}
+		}
+
+		// Batch cleanup to reduce lock contention
+		for _, clientIP := range expiredClients {
+			// 清理反向映射
+			if accountID, exists := p.clientBindings[clientIP]; exists {
+				delete(p.accountBindings, accountID)
+				logger.Debugf("[AccountBinding] Expired binding: client %s -> account %s", clientIP, accountID)
+			}
+			delete(p.clientBindings, clientIP)
+			delete(p.bindingLastSeen, clientIP)
+		}
+
+		if len(expiredClients) > 0 {
+			logger.Infof("[AccountBinding] Cleaned up %d expired bindings", len(expiredClients))
 		}
 		p.mu.Unlock()
 	}
@@ -41,14 +52,14 @@ func (p *AccountPool) bindClient(clientIP, accountID string) {
 		// 解绑旧客户端
 		delete(p.clientBindings, oldClient)
 		delete(p.bindingLastSeen, oldClient)
-		logger.Infof("[AccountBinding] Unbound old client %s from account %s", oldClient, accountID)
+		logger.Debugf("[AccountBinding] Unbound old client from account", )
 	}
 
 	// 绑定新客户端
 	p.clientBindings[clientIP] = accountID
 	p.accountBindings[accountID] = clientIP
 	p.bindingLastSeen[clientIP] = time.Now()
-	logger.Infof("[AccountBinding] Bound client %s to account %s", clientIP, accountID)
+	logger.Debugf("[AccountBinding] Bound client to account")
 }
 
 // unbindClient 解绑客户端
