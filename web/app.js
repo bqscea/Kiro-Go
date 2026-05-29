@@ -621,6 +621,7 @@
     const loginTime = getActiveLoginTime();
     if (loginTime && Date.now() - loginTime > 72 * 3600 * 1000) {
       clearActivePassword();
+      document.documentElement.classList.remove('preauth');
       $('loginPage').classList.remove('hidden');
       $('mainPage').classList.add('hidden');
       return;
@@ -630,11 +631,13 @@
       if (res.ok) { loadData(); }
       else {
         clearActivePassword();
+        document.documentElement.classList.remove('preauth');
         $('loginPage').classList.remove('hidden');
         $('mainPage').classList.add('hidden');
       }
     } catch (e) {
       clearActivePassword();
+      document.documentElement.classList.remove('preauth');
       $('loginPage').classList.remove('hidden');
       $('mainPage').classList.add('hidden');
     }
@@ -3827,6 +3830,9 @@
     if (password) {
       showMain();
       tryAutoLogin();
+    } else {
+      // 没有 password，移除 preauth 类，显示登录页
+      document.documentElement.classList.remove('preauth');
     }
     setInterval(() => {
       if (!$('mainPage').classList.contains('hidden')) loadStats();

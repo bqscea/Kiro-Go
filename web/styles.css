@@ -2,6 +2,14 @@
 
 @import url("https://fonts.googleapis.com/css2?family=Geist:wght@100;200;300;400;500;600;700;800;900&family=Geist+Mono:wght@100;200;300;400;500;600;700;800;900&display=swap");
 
+/* 预认证状态：有 password 时隐藏登录页，显示主页 */
+html.preauth #loginPage {
+  display: none !important;
+}
+html.preauth #mainPage {
+  display: block !important;
+}
+
 /* Design tokens */
 :root {
   --background: #fcfcfc;

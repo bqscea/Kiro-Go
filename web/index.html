@@ -18,8 +18,16 @@
       if (css) css.href = '/admin/styles.css?v=' + v;
       var tcss = document.getElementById('__toastCss');
       if (tcss) tcss.href = '/admin/toast.css?v=' + v;
+
+      // 预检查登录状态，避免闪现登录页
+      try {
+        var password = sessionStorage.getItem('admin_password') || localStorage.getItem('admin_password') || '';
+        if (password) {
+          document.documentElement.classList.add('preauth');
+        }
+      } catch (e) {}
     })();
-  </script>
+
 </head>
 
 <body>
