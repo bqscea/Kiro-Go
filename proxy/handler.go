@@ -4768,3 +4768,35 @@ func (h *Handler) Shutdown() {
 		logger.Infof("[Handler] Background tasks stopped")
 	})
 }
+
+// apiMigrateCredentials 迁移账号从 config.json 到 credentials.json
+func (h *Handler) apiMigrateCredentials(w http.ResponseWriter, r *http.Request) {
+	migrated, err := config.MigrateAccountsToCredentials()
+	if err != nil {
+		logger.Errorf("[MigrateCredentials] Migration failed: %v", err)
+		w.WriteHeader(500)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": fmt.Sprintf("Migration failed: %v", err),
+		})
+		return
+	}
+
+	if migrated == 0 {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success":  true,
+			"migrated": 0,
+			"message":  "No accounts to migrate (config.json accounts is empty or all accounts already exist in credentials.json)",
+		})
+		return
+	}
+
+	// 迁移成功后重新加载账号池
+	h.pool.Reload()
+	logger.Infof("[MigrateCredentials] Successfully migrated %d accounts from config.json to credentials.json", migrated)
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":  true,
+		"migrated": migrated,
+		"message":  fmt.Sprintf("Successfully migrated %d accounts to credentials.json", migrated),
+	})
+}

@@ -279,6 +279,7 @@ var configRoutes = map[adminRouteKey]func(*Handler, http.ResponseWriter, *http.R
 	{"/group-policies", "POST"}:        (*Handler).apiUpdateGroupPolicies,
 	{"/model-aliases", "GET"}:          (*Handler).apiGetModelAliases,
 	{"/model-aliases", "POST"}:         (*Handler).apiUpdateModelAliases,
+	{"/migrate-credentials", "POST"}:   (*Handler).apiMigrateCredentials,
 }
 
 // dispatchConfigAPI looks up the flat config-endpoint table.

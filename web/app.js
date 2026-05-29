@@ -1946,6 +1946,25 @@
       toastError((e && e.message) || t('common.failed'));
     }
   }
+  async function migrateCredentials() {
+    const ok = await confirmAction(t('settings.confirmMigrate'), {
+      title: t('settings.configMigration'),
+      confirmText: t('settings.migrateCredentials'),
+      variant: 'primary'
+    });
+    if (!ok) return;
+    try {
+      const res = await api('/migrate-credentials', { method: 'POST' });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || d.success === false) throw new Error(d.error || t('common.failed'));
+      toastPrimary(d.message || t('settings.migrationSuccess'));
+      if (d.migrated > 0) {
+        setTimeout(() => loadAccounts(), 500);
+      }
+    } catch (e) {
+      toastError((e && e.message) || t('common.failed'));
+    }
+  }
   function generateApiKey() {
     const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     let k = 'sk-';
@@ -3573,6 +3592,7 @@
     $('changePasswordBtn').addEventListener('click', changePassword);
     $('proxyType').addEventListener('change', onProxyTypeChange);
     $('saveProxyBtn').addEventListener('click', saveProxyConfig);
+    $('migrateCredentialsBtn').addEventListener('click', migrateCredentials);
     $('resetStatsBtn').addEventListener('click', resetStats);
     $('resetAccountEventsBtn').addEventListener('click', resetAccountEvents);
 

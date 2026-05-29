@@ -232,3 +232,56 @@ func CredentialsLoaded() bool {
 	defer credLock.RUnlock()
 	return credLoaded
 }
+
+// MigrateAccountsToCredentials migrates accounts from config.json to credentials.json
+// Returns the number of accounts migrated and any error encountered
+func MigrateAccountsToCredentials() (int, error) {
+	cfgLock.RLock()
+	configAccounts := cfg.Accounts
+	cfgLock.RUnlock()
+
+	if len(configAccounts) == 0 {
+		return 0, nil
+	}
+
+	credLock.Lock()
+	defer credLock.Unlock()
+
+	// Build ID map to avoid duplicates
+	existingIDs := make(map[string]bool)
+	for _, acc := range credentials {
+		existingIDs[acc.ID] = true
+	}
+
+	// Migrate non-duplicate accounts
+	migrated := 0
+	for _, acc := range configAccounts {
+		if !existingIDs[acc.ID] {
+			credentials = append(credentials, acc)
+			migrated++
+		}
+	}
+
+	if migrated == 0 {
+		return 0, nil
+	}
+
+	credLoaded = true
+	credLock.Unlock()
+	err := SaveCredentials()
+	credLock.Lock()
+
+	if err != nil {
+		return 0, fmt.Errorf("save credentials: %w", err)
+	}
+
+	// Clear config.json accounts after successful migration
+	cfgLock.Lock()
+	cfg.Accounts = []Account{}
+	cfgLock.Unlock()
+	if err := Save(); err != nil {
+		return migrated, fmt.Errorf("clear config accounts: %w", err)
+	}
+
+	return migrated, nil
+}
