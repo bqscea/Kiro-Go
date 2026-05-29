@@ -2510,8 +2510,8 @@
       '<div class="form-group" style="margin-top:12px">' +
       '<label style="display:flex;align-items:center;cursor:pointer;user-select:none">' +
       '<input type="checkbox" id="importStandbyCheckbox" style="margin-right:8px">' +
-      '<span data-i18n="import.standbyMode"></span>' +
-      '<span style="margin-left:8px;font-size:12px;color:#64748b;font-weight:normal" data-i18n="import.standbyHint"></span>' +
+      '<span>' + escapeHtml(t('import.standbyMode')) + '</span>' +
+      '<span style="margin-left:8px;font-size:12px;color:#64748b;font-weight:normal">' + escapeHtml(t('import.standbyHint')) + '</span>' +
       '</label>' +
       '</div>' +
       '<div class="modal-footer">' +
