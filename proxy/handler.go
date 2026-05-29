@@ -1072,6 +1072,10 @@ func (h *Handler) handleCountTokens(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
+		if _, ok := err.(*http.MaxBytesError); ok {
+			h.sendClaudeError(w, http.StatusRequestEntityTooLarge, "invalid_request_error", fmt.Sprintf("Request body exceeds %d bytes", MaxChatBodyBytes))
+			return
+		}
 		h.sendClaudeError(w, 400, "invalid_request_error", "Failed to read request body")
 		return
 	}
@@ -1116,6 +1120,10 @@ func (h *Handler) handleClaudeMessagesInternal(w http.ResponseWriter, r *http.Re
 	defer r.Body.Close()
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
+		if _, ok := err.(*http.MaxBytesError); ok {
+			h.sendClaudeError(w, http.StatusRequestEntityTooLarge, "invalid_request_error", fmt.Sprintf("Request body exceeds %d bytes", MaxChatBodyBytes))
+			return
+		}
 		h.sendClaudeError(w, 400, "invalid_request_error", "Failed to read request body")
 		return
 	}
@@ -1995,6 +2003,10 @@ func (h *Handler) handleOpenAIChat(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
+		if _, ok := err.(*http.MaxBytesError); ok {
+			h.sendOpenAIError(w, http.StatusRequestEntityTooLarge, "invalid_request_error", fmt.Sprintf("Request body exceeds %d bytes", MaxChatBodyBytes))
+			return
+		}
 		h.sendOpenAIError(w, 400, "invalid_request_error", "Failed to read request body")
 		return
 	}

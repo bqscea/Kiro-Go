@@ -291,7 +291,7 @@ func ClaudeToKiro(req *ClaudeRequest, thinking bool) *KiroPayload {
 	}
 
 	if len(history) > 0 {
-		payload.ConversationState.History = history
+		payload.ConversationState.History = truncateHistory(history, 20)
 	}
 
 	if req.MaxTokens > 0 || req.Temperature > 0 || req.TopP > 0 {
@@ -1130,7 +1130,7 @@ func OpenAIToKiro(req *OpenAIRequest, thinking bool) *KiroPayload {
 	}
 
 	if len(history) > 0 {
-		payload.ConversationState.History = history
+		payload.ConversationState.History = truncateHistory(history, 20)
 	}
 
 	if req.MaxTokens > 0 || req.Temperature > 0 || req.TopP > 0 {

@@ -7,9 +7,10 @@
 //
 // The numbers are calibrated, not arbitrary:
 //
-//   - MaxChatBodyBytes (10 MiB) — Claude/OpenAI chat requests can carry
-//     large prompts + base64 image parts; 10 MiB matches upstream limits
-//     and leaves headroom for tool-use payloads.
+//   - MaxChatBodyBytes (200 KiB) — Kiro generation endpoints reject
+//     larger request bodies with CONTENT_LENGTH_EXCEEDS_THRESHOLD. Keep
+//     the local limit aligned so clients get a fast local error instead
+//     of burning an upstream attempt.
 //   - MaxAdminBodyBytes (256 KiB) — admin API JSON payloads (settings,
 //     account edits, alert rules). Even with hundreds of accounts /
 //     model aliases this stays comfortably under the cap.
@@ -21,9 +22,9 @@ package proxy
 import "net/http"
 
 const (
-	MaxChatBodyBytes     = 10 << 20 // 10 MiB
+	MaxChatBodyBytes     = 200 << 10 // 200 KiB
 	MaxAdminBodyBytes    = 256 << 10 // 256 KiB
-	MaxBackupUploadBytes = 64 << 20 // 64 MiB
+	MaxBackupUploadBytes = 64 << 20  // 64 MiB
 )
 
 // limitBody wraps r.Body with http.MaxBytesReader so subsequent reads
