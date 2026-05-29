@@ -7,10 +7,10 @@
 //
 // The numbers are calibrated, not arbitrary:
 //
-//   - MaxChatBodyBytes (200 KiB) — Kiro generation endpoints reject
-//     larger request bodies with CONTENT_LENGTH_EXCEEDS_THRESHOLD. Keep
-//     the local limit aligned so clients get a fast local error instead
-//     of burning an upstream attempt.
+//   - MaxChatBodyBytes (32 MiB) — Claude Code and tool-heavy clients can
+//     submit large client payloads before proxy-side filtering/truncation.
+//     Kiro's smaller upstream payload limit is handled after translation by
+//     trimming conversation history, not by rejecting the client request.
 //   - MaxAdminBodyBytes (256 KiB) — admin API JSON payloads (settings,
 //     account edits, alert rules). Even with hundreds of accounts /
 //     model aliases this stays comfortably under the cap.
@@ -22,7 +22,7 @@ package proxy
 import "net/http"
 
 const (
-	MaxChatBodyBytes     = 200 << 10 // 200 KiB
+	MaxChatBodyBytes     = 32 << 20  // 32 MiB
 	MaxAdminBodyBytes    = 256 << 10 // 256 KiB
 	MaxBackupUploadBytes = 64 << 20  // 64 MiB
 )
