@@ -1553,7 +1553,11 @@ func (h *Handler) handleClaudeStream(w http.ResponseWriter, r *http.Request, acc
 		h.recordFailure()
 		getObserveStore().RecordFailure(account.ID, model)
 		getObserveStore().RecordError(account.ID, account.Email, model, 0, err.Error())
-		getObserveStore().RecordRequest(account.ID, account.Email, model, 0, 0, 0.0, account.UsageLimit-account.UsageCurrent, false, r.RemoteAddr)
+		remaining := 0.0
+		if account.UsageLimit > 0 {
+			remaining = account.UsageLimit - account.UsageCurrent
+		}
+		getObserveStore().RecordRequest(account.ID, account.Email, model, 0, 0, 0.0, remaining, false, r.RemoteAddr)
 		h.pool.RecordError(account.ID, isQuotaError(err))
 		h.autoSilentIfSuspended(account.ID, err)
 		h.checkOverageError(err, account.ID)
@@ -1593,7 +1597,11 @@ func (h *Handler) handleClaudeStream(w http.ResponseWriter, r *http.Request, acc
 
 	h.recordSuccess(inputTokens, outputTokens, credits)
 	getObserveStore().RecordSuccess(account.ID, model, inputTokens, outputTokens, credits)
-	getObserveStore().RecordRequest(account.ID, account.Email, model, inputTokens, outputTokens, credits, account.UsageLimit-account.UsageCurrent, true, r.RemoteAddr)
+	remaining := 0.0
+	if account.UsageLimit > 0 {
+		remaining = account.UsageLimit - account.UsageCurrent
+	}
+	getObserveStore().RecordRequest(account.ID, account.Email, model, inputTokens, outputTokens, credits, remaining, true, r.RemoteAddr)
 	h.pool.RecordSuccess(account.ID)
 	h.pool.UpdateStats(account.ID, inputTokens+outputTokens, credits)
 	h.recordApiKeyUsage(r, inputTokens+outputTokens, credits)
@@ -1886,7 +1894,11 @@ func (h *Handler) handleClaudeNonStream(w http.ResponseWriter, r *http.Request, 
 		h.recordFailure()
 		getObserveStore().RecordFailure(account.ID, model)
 		getObserveStore().RecordError(account.ID, account.Email, model, 0, err.Error())
-		getObserveStore().RecordRequest(account.ID, account.Email, model, 0, 0, 0.0, account.UsageLimit-account.UsageCurrent, false, r.RemoteAddr)
+		remaining := 0.0
+		if account.UsageLimit > 0 {
+			remaining = account.UsageLimit - account.UsageCurrent
+		}
+		getObserveStore().RecordRequest(account.ID, account.Email, model, 0, 0, 0.0, remaining, false, r.RemoteAddr)
 		h.pool.RecordError(account.ID, isQuotaError(err))
 		h.autoSilentIfSuspended(account.ID, err)
 		h.checkOverageError(err, account.ID)
@@ -1918,7 +1930,11 @@ func (h *Handler) handleClaudeNonStream(w http.ResponseWriter, r *http.Request, 
 
 	h.recordSuccess(inputTokens, outputTokens, credits)
 	getObserveStore().RecordSuccess(account.ID, model, inputTokens, outputTokens, credits)
-	getObserveStore().RecordRequest(account.ID, account.Email, model, inputTokens, outputTokens, credits, account.UsageLimit-account.UsageCurrent, true, r.RemoteAddr)
+	remaining := 0.0
+	if account.UsageLimit > 0 {
+		remaining = account.UsageLimit - account.UsageCurrent
+	}
+	getObserveStore().RecordRequest(account.ID, account.Email, model, inputTokens, outputTokens, credits, remaining, true, r.RemoteAddr)
 	h.pool.RecordSuccess(account.ID)
 	h.pool.UpdateStats(account.ID, inputTokens+outputTokens, credits)
 	h.recordApiKeyUsage(r, inputTokens+outputTokens, credits)
@@ -2353,7 +2369,11 @@ func (h *Handler) handleOpenAIStream(w http.ResponseWriter, r *http.Request, acc
 		h.recordFailure()
 		getObserveStore().RecordFailure(account.ID, model)
 		getObserveStore().RecordError(account.ID, account.Email, model, 0, err.Error())
-		getObserveStore().RecordRequest(account.ID, account.Email, model, 0, 0, 0.0, account.UsageLimit-account.UsageCurrent, false, r.RemoteAddr)
+		remaining := 0.0
+		if account.UsageLimit > 0 {
+			remaining = account.UsageLimit - account.UsageCurrent
+		}
+		getObserveStore().RecordRequest(account.ID, account.Email, model, 0, 0, 0.0, remaining, false, r.RemoteAddr)
 		h.pool.RecordError(account.ID, isQuotaError(err))
 		h.autoSilentIfSuspended(account.ID, err)
 		h.checkOverageError(err, account.ID)
@@ -2392,7 +2412,11 @@ func (h *Handler) handleOpenAIStream(w http.ResponseWriter, r *http.Request, acc
 
 	h.recordSuccess(inputTokens, outputTokens, credits)
 	getObserveStore().RecordSuccess(account.ID, model, inputTokens, outputTokens, credits)
-	getObserveStore().RecordRequest(account.ID, account.Email, model, inputTokens, outputTokens, credits, account.UsageLimit-account.UsageCurrent, true, r.RemoteAddr)
+	remaining := 0.0
+	if account.UsageLimit > 0 {
+		remaining = account.UsageLimit - account.UsageCurrent
+	}
+	getObserveStore().RecordRequest(account.ID, account.Email, model, inputTokens, outputTokens, credits, remaining, true, r.RemoteAddr)
 	h.pool.RecordSuccess(account.ID)
 	h.pool.UpdateStats(account.ID, inputTokens+outputTokens, credits)
 	h.recordApiKeyUsage(r, inputTokens+outputTokens, credits)
@@ -2456,7 +2480,11 @@ func (h *Handler) handleOpenAINonStream(w http.ResponseWriter, r *http.Request, 
 		h.recordFailure()
 		getObserveStore().RecordFailure(account.ID, model)
 		getObserveStore().RecordError(account.ID, account.Email, model, 0, err.Error())
-		getObserveStore().RecordRequest(account.ID, account.Email, model, 0, 0, 0.0, account.UsageLimit-account.UsageCurrent, false, r.RemoteAddr)
+		remaining := 0.0
+		if account.UsageLimit > 0 {
+			remaining = account.UsageLimit - account.UsageCurrent
+		}
+		getObserveStore().RecordRequest(account.ID, account.Email, model, 0, 0, 0.0, remaining, false, r.RemoteAddr)
 		h.pool.RecordError(account.ID, isQuotaError(err))
 		h.autoSilentIfSuspended(account.ID, err)
 		h.checkOverageError(err, account.ID)
@@ -2485,7 +2513,11 @@ func (h *Handler) handleOpenAINonStream(w http.ResponseWriter, r *http.Request, 
 
 	h.recordSuccess(inputTokens, outputTokens, credits)
 	getObserveStore().RecordSuccess(account.ID, model, inputTokens, outputTokens, credits)
-	getObserveStore().RecordRequest(account.ID, account.Email, model, inputTokens, outputTokens, credits, account.UsageLimit-account.UsageCurrent, true, r.RemoteAddr)
+	remaining := 0.0
+	if account.UsageLimit > 0 {
+		remaining = account.UsageLimit - account.UsageCurrent
+	}
+	getObserveStore().RecordRequest(account.ID, account.Email, model, inputTokens, outputTokens, credits, remaining, true, r.RemoteAddr)
 	h.pool.RecordSuccess(account.ID)
 	h.pool.UpdateStats(account.ID, inputTokens+outputTokens, credits)
 	h.recordApiKeyUsage(r, inputTokens+outputTokens, credits)

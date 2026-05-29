@@ -2590,6 +2590,7 @@
     } else toastError(t('common.failed') + ': ' + (d.error || ''));
   }
   async function importCredentials() {
+    const dismiss = toast(t('batch.processing'), 'info', { duration: 0 });
     try {
       const json = JSON.parse($('credJson').value.trim());
       let items;
@@ -2635,12 +2636,14 @@
           else fail++;
         } catch { fail++; }
       }
+      dismiss();
       closeModal(); loadAccounts(); loadStats();
       let msg = t('sso.importSuccess', ok);
       if (fail > 0) msg += t('sso.importPartial', fail);
       toastPrimary(msg, { duration: 5200 });
       newIds.forEach(autoRefreshNewAccount);
     } catch (e) {
+      dismiss();
       toastWarning(t('credentials.jsonError'));
     }
   }
