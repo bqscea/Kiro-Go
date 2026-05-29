@@ -621,12 +621,23 @@
     const loginTime = getActiveLoginTime();
     if (loginTime && Date.now() - loginTime > 72 * 3600 * 1000) {
       clearActivePassword();
+      $('loginPage').classList.remove('hidden');
+      $('mainPage').classList.add('hidden');
       return;
     }
     try {
       const res = await api('/status');
-      if (res.ok) { showMain(); loadData(); }
-    } catch (e) { }
+      if (res.ok) { loadData(); }
+      else {
+        clearActivePassword();
+        $('loginPage').classList.remove('hidden');
+        $('mainPage').classList.add('hidden');
+      }
+    } catch (e) {
+      clearActivePassword();
+      $('loginPage').classList.remove('hidden');
+      $('mainPage').classList.add('hidden');
+    }
   }
   async function login() {
     password = $('pwdField').value;
@@ -3813,7 +3824,10 @@
     const yr = $('footerYear');
     if (yr) yr.textContent = new Date().getFullYear();
     wireEvents();
-    if (password) tryAutoLogin();
+    if (password) {
+      showMain();
+      tryAutoLogin();
+    }
     setInterval(() => {
       if (!$('mainPage').classList.contains('hidden')) loadStats();
     }, 10000);

@@ -1607,7 +1607,7 @@ func (h *Handler) handleClaudeStream(w http.ResponseWriter, r *http.Request, acc
 	getObserveStore().RecordSuccess(account.ID, model, inputTokens, outputTokens, credits)
 	remaining := 0.0
 	if account.UsageLimit > 0 {
-		remaining = account.UsageLimit - account.UsageCurrent
+		remaining = account.UsageLimit - account.UsageCurrent - credits
 	}
 	getObserveStore().RecordRequest(account.ID, account.Email, model, inputTokens, outputTokens, credits, remaining, true, r.RemoteAddr)
 	h.pool.RecordSuccess(account.ID)
@@ -1940,7 +1940,7 @@ func (h *Handler) handleClaudeNonStream(w http.ResponseWriter, r *http.Request, 
 	getObserveStore().RecordSuccess(account.ID, model, inputTokens, outputTokens, credits)
 	remaining := 0.0
 	if account.UsageLimit > 0 {
-		remaining = account.UsageLimit - account.UsageCurrent
+		remaining = account.UsageLimit - account.UsageCurrent - credits
 	}
 	getObserveStore().RecordRequest(account.ID, account.Email, model, inputTokens, outputTokens, credits, remaining, true, r.RemoteAddr)
 	h.pool.RecordSuccess(account.ID)
@@ -2426,7 +2426,7 @@ func (h *Handler) handleOpenAIStream(w http.ResponseWriter, r *http.Request, acc
 	getObserveStore().RecordSuccess(account.ID, model, inputTokens, outputTokens, credits)
 	remaining := 0.0
 	if account.UsageLimit > 0 {
-		remaining = account.UsageLimit - account.UsageCurrent
+		remaining = account.UsageLimit - account.UsageCurrent - credits
 	}
 	getObserveStore().RecordRequest(account.ID, account.Email, model, inputTokens, outputTokens, credits, remaining, true, r.RemoteAddr)
 	h.pool.RecordSuccess(account.ID)
@@ -2527,7 +2527,7 @@ func (h *Handler) handleOpenAINonStream(w http.ResponseWriter, r *http.Request, 
 	getObserveStore().RecordSuccess(account.ID, model, inputTokens, outputTokens, credits)
 	remaining := 0.0
 	if account.UsageLimit > 0 {
-		remaining = account.UsageLimit - account.UsageCurrent
+		remaining = account.UsageLimit - account.UsageCurrent - credits
 	}
 	getObserveStore().RecordRequest(account.ID, account.Email, model, inputTokens, outputTokens, credits, remaining, true, r.RemoteAddr)
 	h.pool.RecordSuccess(account.ID)
