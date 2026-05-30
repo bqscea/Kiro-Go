@@ -1943,7 +1943,7 @@ img.brand-icon {
 }
 .account-stats {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   justify-items: center;
   gap: 0.5rem;
   padding-top: 0.75rem;

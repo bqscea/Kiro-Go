@@ -78,7 +78,7 @@ type observeStore struct {
 	globalRing      [observeMinuteSlots]minuteBucket
 	accountRings    map[string]*[observeMinuteSlots]minuteBucket
 	modelStats      map[string]*modelStat
-	recentErrors    []errorRecord  // 循环写入
+	recentErrors    []errorRecord // 循环写入
 	recentErrIdx    int
 	recentRequests  []requestRecord // 循环写入
 	recentReqIdx    int
@@ -96,14 +96,14 @@ var (
 func getObserveStore() *observeStore {
 	observeStoreOnce.Do(func() {
 		observeStoreInst = &observeStore{
-			startedAt:       time.Now().Unix(),
-			accountRings:    make(map[string]*[observeMinuteSlots]minuteBucket),
-			modelStats:      make(map[string]*modelStat),
-			recentErrors:    make([]errorRecord, observeRecentErrs),
-			recentRequests:  make([]requestRecord, observeRecentReqs),
-			accountEvents:   make([]accountEventRecord, 100), // 最近 100 条事件
-			maxAccountRing:  200,
-			accountTouched:  make(map[string]int64),
+			startedAt:      time.Now().Unix(),
+			accountRings:   make(map[string]*[observeMinuteSlots]minuteBucket),
+			modelStats:     make(map[string]*modelStat),
+			recentErrors:   make([]errorRecord, observeRecentErrs),
+			recentRequests: make([]requestRecord, observeRecentReqs),
+			accountEvents:  make([]accountEventRecord, 100), // 最近 100 条事件
+			maxAccountRing: 200,
+			accountTouched: make(map[string]int64),
 		}
 	})
 	return observeStoreInst
@@ -277,24 +277,24 @@ func (s *observeStore) RecordRequest(accountID, email, model string, inTokens, o
 
 // OverviewSnapshot 全局总览（最近 1 分钟与最近 5 分钟均值）
 type OverviewSnapshot struct {
-	StartedAt       int64   `json:"startedAt"`
-	NowUnix         int64   `json:"nowUnix"`
-	RPM1            int     `json:"rpm1"`            // 最近 1min 请求数
-	RPM5Avg         float64 `json:"rpm5Avg"`         // 最近 5min 平均
-	ErrRate5        float64 `json:"errRate5"`        // 最近 5min 错误率 (0-1)
-	InTPM5          float64 `json:"inTpm5"`          // 5min 入 tokens / min
-	OutTPM5         float64 `json:"outTpm5"`         // 5min 出 tokens / min
-	Credits5        float64 `json:"credits5"`        // 5min credits 之和
-	Credits60       float64 `json:"credits60"`       // 60min credits 之和
-	Errors60        int     `json:"errors60"`        // 最近 60min 失败数
-	Successes60     int     `json:"successes60"`     // 最近 60min 成功数
-	ActiveAccts     int     `json:"activeAccts"`     // 最近 5min 有流量的账号数
-	TotalAccts      int     `json:"totalAccts"`      // 累计被记录过的账号数
-	TotalModels     int     `json:"totalModels"`     // 累计模型数
-	TotalBanned     int     `json:"totalBanned"`     // 总封禁账号数
-	TodayBanned     int     `json:"todayBanned"`     // 今日封禁账号数
-	TotalExhausted  int     `json:"totalExhausted"`  // 总耗尽账号数
-	TodayExhausted  int     `json:"todayExhausted"`  // 今日耗尽账号数
+	StartedAt      int64   `json:"startedAt"`
+	NowUnix        int64   `json:"nowUnix"`
+	RPM1           int     `json:"rpm1"`           // 最近 1min 请求数
+	RPM5Avg        float64 `json:"rpm5Avg"`        // 最近 5min 平均
+	ErrRate5       float64 `json:"errRate5"`       // 最近 5min 错误率 (0-1)
+	InTPM5         float64 `json:"inTpm5"`         // 5min 入 tokens / min
+	OutTPM5        float64 `json:"outTpm5"`        // 5min 出 tokens / min
+	Credits5       float64 `json:"credits5"`       // 5min credits 之和
+	Credits60      float64 `json:"credits60"`      // 60min credits 之和
+	Errors60       int     `json:"errors60"`       // 最近 60min 失败数
+	Successes60    int     `json:"successes60"`    // 最近 60min 成功数
+	ActiveAccts    int     `json:"activeAccts"`    // 最近 5min 有流量的账号数
+	TotalAccts     int     `json:"totalAccts"`     // 累计被记录过的账号数
+	TotalModels    int     `json:"totalModels"`    // 累计模型数
+	TotalBanned    int     `json:"totalBanned"`    // 总封禁账号数
+	TodayBanned    int     `json:"todayBanned"`    // 今日封禁账号数
+	TotalExhausted int     `json:"totalExhausted"` // 总耗尽账号数
+	TodayExhausted int     `json:"todayExhausted"` // 今日耗尽账号数
 }
 
 func (s *observeStore) Overview() OverviewSnapshot {
@@ -395,10 +395,10 @@ func (s *observeStore) Overview() OverviewSnapshot {
 
 // HeatmapCell 单格数据
 type HeatmapCell struct {
-	Offset    int     `json:"offset"`    // 距当前分钟的负偏移 (0..windowMin-1)
-	Reqs      int     `json:"reqs"`
-	Failures  int     `json:"failures"`
-	Credits   float64 `json:"credits,omitempty"`
+	Offset   int     `json:"offset"` // 距当前分钟的负偏移 (0..windowMin-1)
+	Reqs     int     `json:"reqs"`
+	Failures int     `json:"failures"`
+	Credits  float64 `json:"credits,omitempty"`
 }
 
 // AccountHeatmap 单账号热图
@@ -576,6 +576,37 @@ func (s *observeStore) RecentAccountEvents(limit int) []accountEventRecord {
 			continue
 		}
 		out = append(out, rec)
+	}
+	return out
+}
+
+// AccountFirstSeen returns the earliest persisted observe timestamp per account.
+func (s *observeStore) AccountFirstSeen() map[string]int64 {
+	out := make(map[string]int64)
+	if s == nil {
+		return out
+	}
+
+	add := func(accountID string, ts int64) {
+		if accountID == "" || ts <= 0 {
+			return
+		}
+		if current, ok := out[accountID]; !ok || ts < current {
+			out[accountID] = ts
+		}
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, rec := range s.recentRequests {
+		add(rec.AccountID, rec.TS)
+	}
+	for _, rec := range s.recentErrors {
+		add(rec.AccountID, rec.TS)
+	}
+	for _, rec := range s.accountEvents {
+		add(rec.AccountID, rec.TS)
+		add(rec.AccountID, rec.CreatedAt)
 	}
 	return out
 }

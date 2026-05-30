@@ -969,6 +969,21 @@
     if (diff < 2592000) return Math.floor(diff / 86400) + t('time.daysAgo');
     return Math.floor(diff / 2592000) + t('time.monthsAgo');
   }
+  function formatAccountAge(ts) {
+    if (!ts) return '-';
+    const diff = Math.max(0, Date.now() / 1000 - ts);
+    if (diff < 3600) return Math.max(1, Math.floor(diff / 60)) + t('time.minutes');
+    if (diff < 86400) return Math.floor(diff / 3600) + t('time.hours');
+    if (diff < 2592000) return Math.floor(diff / 86400) + t('time.days');
+    if (diff < 31536000) return Math.floor(diff / 2592000) + t('time.months');
+    return Math.floor(diff / 31536000) + t('time.years');
+  }
+  function formatCreatedAt(ts) {
+    return ts ? new Date(ts * 1000).toLocaleString() : '-';
+  }
+  function getAccountAgeStart(a) {
+    return a.createdAt || a.knownSince || 0;
+  }
   function formatNum(n) {
     if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
     if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
@@ -1067,6 +1082,7 @@
         '<div class="account-stat"><div class="account-stat-value">' + formatNum(a.totalTokens || 0) + '</div><div class="account-stat-label">' + escapeHtml(t('accounts.tokens')) + '</div></div>' +
         '<div class="account-stat"><div class="account-stat-value">' + (a.totalCredits || 0).toFixed(1) + '</div><div class="account-stat-label">' + escapeHtml(t('accounts.credits')) + '</div></div>' +
         '<div class="account-stat"><div class="account-stat-value">' + escapeHtml(formatTokenExpiry(a.expiresAt)) + '</div><div class="account-stat-label">' + escapeHtml(t('accounts.expiry')) + '</div></div>' +
+        '<div class="account-stat"><div class="account-stat-value">' + escapeHtml(formatAccountAge(getAccountAgeStart(a))) + '</div><div class="account-stat-label">' + escapeHtml(t(a.createdAt ? 'accounts.alive' : 'accounts.knownAlive')) + '</div></div>' +
         '<div class="account-stat"><div class="account-stat-value">' + escapeHtml(formatLastUsed(a.lastUsed)) + '</div><div class="account-stat-label">' + escapeHtml(t('accounts.lastUsed')) + '</div></div>' +
         '<div class="account-stat"><div class="account-stat-value"><select class="quick-weight-select" data-native-select="true" data-id="' + idAttr + '" aria-label="' + escapeAttr(t('accounts.weight')) + '">' + weightOptions + '</select></div><div class="account-stat-label">' + escapeHtml(t('accounts.weight')) + '</div></div>' +
         '</div>' +
@@ -1415,6 +1431,8 @@
       detailItem(t('detail.authMethod'), formatAuthMethod(a.provider || a.authMethod)) +
       detailItem(t('detail.region'), a.region || 'us-east-1') +
       detailItem(t('detail.status'), a.enabled ? t('accounts.enabled') : t('accounts.disabled')) +
+      detailItem(t(a.createdAt ? 'accounts.alive' : 'accounts.knownAlive'), formatAccountAge(getAccountAgeStart(a))) +
+      detailItem(t('accounts.createdAt'), formatCreatedAt(a.createdAt)) +
       '</div>';
 
     const configTab =
@@ -1473,6 +1491,7 @@
       detailItem(t('detail.errorCount'), a.errorCount || 0) +
       detailItem(t('detail.totalTokens'), formatNum(a.totalTokens || 0)) +
       detailItem(t('detail.totalCredits'), (a.totalCredits || 0).toFixed(2)) +
+      detailItem(t(a.createdAt ? 'accounts.alive' : 'accounts.knownAlive'), formatAccountAge(getAccountAgeStart(a))) +
       detailItem(t('accounts.lastUsed'), formatLastUsed(a.lastUsed)) +
       '</div>';
 

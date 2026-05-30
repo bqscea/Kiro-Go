@@ -20,6 +20,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 )
 
 // GenerateMachineId generates a UUID v4 format machine identifier.
@@ -500,6 +501,10 @@ func GetEnabledAccounts() []Account {
 }
 
 func AddAccount(account Account) error {
+	if account.CreatedAt == 0 {
+		account.CreatedAt = time.Now().Unix()
+	}
+
 	// Priority: credentials.json > config.json
 	if CredentialsLoaded() {
 		return AddCredential(account)

@@ -2616,9 +2616,34 @@ func (h *Handler) tokenRefreshLock(accountID string) *sync.Mutex {
 	return actual.(*sync.Mutex)
 }
 
+func accountKnownSince(a config.Account, stats config.Account, observeFirstSeen map[string]int64) int64 {
+	knownSince := a.CreatedAt
+	add := func(ts int64) {
+		if ts <= 0 {
+			return
+		}
+		if knownSince == 0 || ts < knownSince {
+			knownSince = ts
+		}
+	}
+
+	add(stats.LastUsed)
+	add(a.LastUsed)
+	add(a.LastRefresh)
+	add(a.SilentTime)
+	add(a.StandbyTime)
+	add(a.BanTime)
+	add(a.ExhaustedTime)
+	if observeFirstSeen != nil {
+		add(observeFirstSeen[a.ID])
+	}
+	return knownSince
+}
+
 func (h *Handler) apiGetAccounts(w http.ResponseWriter, r *http.Request) {
 	accounts := config.GetAccounts()
 	poolAccounts := h.pool.GetAllAccounts()
+	observeFirstSeen := getObserveStore().AccountFirstSeen()
 
 	// 合并运行时统计
 	statsMap := make(map[string]config.Account)
@@ -2675,6 +2700,8 @@ func (h *Handler) apiGetAccounts(w http.ResponseWriter, r *http.Request) {
 			"totalTokens":       stats.TotalTokens,
 			"totalCredits":      stats.TotalCredits,
 			"lastUsed":          stats.LastUsed,
+			"createdAt":         a.CreatedAt,
+			"knownSince":        accountKnownSince(a, stats, observeFirstSeen),
 		}
 	}
 
@@ -4051,6 +4078,8 @@ func (h *Handler) apiGetAccountFull(w http.ResponseWriter, r *http.Request, id s
 		"totalTokens":       stats.TotalTokens,
 		"totalCredits":      stats.TotalCredits,
 		"lastUsed":          stats.LastUsed,
+		"createdAt":         account.CreatedAt,
+		"knownSince":        accountKnownSince(*account, stats, getObserveStore().AccountFirstSeen()),
 	}
 
 	json.NewEncoder(w).Encode(result)

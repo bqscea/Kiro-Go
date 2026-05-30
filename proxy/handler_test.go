@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"kiro-go/config"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -113,6 +114,35 @@ func TestUpstreamErrorClassificationCoversFailoverCases(t *testing.T) {
 		if got.Quota != tc.want.Quota || got.Overage != tc.want.Overage || got.Suspended != tc.want.Suspended || got.Profile != tc.want.Profile || got.Auth != tc.want.Auth {
 			t.Fatalf("%s: got %#v, want %#v", tc.name, got, tc.want)
 		}
+	}
+}
+
+func TestAccountKnownSincePrefersEarliestAvailableTimestamp(t *testing.T) {
+	got := accountKnownSince(
+		config.Account{
+			ID:          "acc-1",
+			CreatedAt:   2000,
+			LastRefresh: 1500,
+		},
+		config.Account{LastUsed: 1800},
+		map[string]int64{"acc-1": 1200},
+	)
+	if got != 1200 {
+		t.Fatalf("expected earliest known timestamp 1200, got %d", got)
+	}
+}
+
+func TestAccountKnownSinceKeepsRealCreatedAtWhenNoEarlierSignal(t *testing.T) {
+	got := accountKnownSince(
+		config.Account{
+			ID:        "acc-1",
+			CreatedAt: 2000,
+		},
+		config.Account{LastUsed: 2500},
+		map[string]int64{"acc-1": 3000},
+	)
+	if got != 2000 {
+		t.Fatalf("expected real createdAt 2000, got %d", got)
 	}
 }
 
