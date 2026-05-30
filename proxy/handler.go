@@ -3118,6 +3118,24 @@ func (h *Handler) apiBatchAccounts(w http.ResponseWriter, r *http.Request) {
 			"groups":  groups,
 		})
 
+	case "delete":
+		successCount := 0
+		failCount := 0
+		for _, id := range req.IDs {
+			if err := config.DeleteAccount(id); err != nil {
+				failCount++
+				logger.Warnf("[BatchDelete] Failed to delete account %s: %v", id, err)
+			} else {
+				successCount++
+			}
+		}
+		h.pool.Reload()
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"deleted": successCount,
+			"failed":  failCount,
+		})
+
 	default:
 		w.WriteHeader(400)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid action: " + req.Action})

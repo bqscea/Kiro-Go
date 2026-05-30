@@ -3034,10 +3034,12 @@
     if (!el) return;
     const events = (data && data.events) || [];
     if (!events.length) { el.innerHTML = '<div class="empty-state compact">' + escapeHtml(t('observe.empty')) + '</div>'; return; }
-    el.innerHTML = tableHtml([t('observe.eventTime'), t('observe.eventAccount'), t('observe.eventCreatedAt'), t('observe.eventType'), t('observe.eventMessage')], events.map(e => {
+    el.innerHTML = tableHtml([t('observe.eventTime'), t('observe.eventAccount'), t('observe.eventType'), t('observe.eventMessage')], events.map(e => {
       const acct = e.email ? getDisplayEmail(e.email, e.accountId) : String(e.accountId || '').slice(0, 8);
       const typeKey = 'observe.event' + String(e.eventType || '').charAt(0).toUpperCase() + String(e.eventType || '').slice(1);
-      return '<tr><td>' + escapeHtml(fmtTime(e.ts)) + '</td><td>' + escapeHtml(acct) + '</td><td>' + escapeHtml(e.createdAt ? fmtTime(e.createdAt) : '-') + '</td><td>' + escapeHtml(t(typeKey) || e.eventType || '-') + '</td><td>' + escapeHtml(e.message || '-') + '</td></tr>';
+      const typeLabel = t(typeKey) || e.eventType || '-';
+      const typeBadge = '<span class="badge ' + (e.eventType === 'banned' ? 'badge-error' : 'badge-warning') + '">' + escapeHtml(typeLabel) + '</span>';
+      return '<tr><td class="text-muted">' + escapeHtml(fmtTime(e.ts)) + '</td><td class="font-medium">' + escapeHtml(acct) + '</td><td>' + typeBadge + '</td><td>' + escapeHtml(e.reason || '-') + '</td></tr>';
     }));
   }
   function renderObserveErrors(data) {
@@ -3333,7 +3335,9 @@
     el.innerHTML = tableHtml([t('observe.eventTime'), t('observe.eventAccount'), t('observe.eventType'), t('observe.eventMessage')], events.map(e => {
       const acct = e.email ? getDisplayEmail(e.email, e.accountId) : String(e.accountId || '').slice(0, 8);
       const typeKey = 'observe.event' + String(e.eventType || '').charAt(0).toUpperCase() + String(e.eventType || '').slice(1);
-      return '<tr><td>' + escapeHtml(fmtTime(e.ts)) + '</td><td>' + escapeHtml(acct) + '</td><td>' + escapeHtml(t(typeKey) || e.eventType || '-') + '</td><td>' + escapeHtml(e.message || '-') + '</td></tr>';
+      const typeLabel = t(typeKey) || e.eventType || '-';
+      const typeBadge = '<span class="badge ' + (e.eventType === 'banned' ? 'badge-error' : 'badge-warning') + '">' + escapeHtml(typeLabel) + '</span>';
+      return '<tr><td class="text-muted">' + escapeHtml(fmtTime(e.ts)) + '</td><td class="font-medium">' + escapeHtml(acct) + '</td><td>' + typeBadge + '</td><td>' + escapeHtml(e.reason || '-') + '</td></tr>';
     }));
   }
   function startStats() {

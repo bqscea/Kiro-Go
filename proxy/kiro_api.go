@@ -145,6 +145,11 @@ func warmAccountProfileArn(account *config.Account) error {
 	if err != nil && isBuilderIDUnsupportedProfileError(err) {
 		return nil
 	}
+	// 瞬态错误（网络超时、5xx）不阻塞请求，允许后续重试
+	if err != nil && isTransientProfileError(err) {
+		logger.Warnf("[ProfileArn] Transient error fetching profile ARN, allowing request to proceed: %v", err)
+		return nil
+	}
 
 	if account.RefreshToken != "" {
 		_, _, _, refreshedArn, refreshErr := auth.RefreshToken(account)
@@ -166,6 +171,19 @@ func isBuilderIDUnsupportedProfileError(err error) bool {
 	}
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "builder id is not supported")
+}
+
+func isTransientProfileError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	// 网络超时、连接错误、5xx 服务端错误
+	return strings.Contains(msg, "timeout") ||
+		strings.Contains(msg, "connection") ||
+		strings.Contains(msg, "http 5") ||
+		strings.Contains(msg, "temporary") ||
+		strings.Contains(msg, "unavailable")
 }
 
 func listAvailableProfiles(account *config.Account) (string, error) {
